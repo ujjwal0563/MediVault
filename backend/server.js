@@ -1,12 +1,12 @@
 const express = require("express");
 const dotenv = require("dotenv");
+dotenv.config();
+
 const connectDB = require("./config/db.js");
 const authRoutes = require("./routes/auth");
 const doctorRoutes = require("./routes/doctor");
 const patientRoutes = require("./routes/patient");
 const medicineRoutes = require("./routes/medicine");
-
-dotenv.config();
 connectDB();
 
 const app = express();
