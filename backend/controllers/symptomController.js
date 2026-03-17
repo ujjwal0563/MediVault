@@ -2,22 +2,56 @@ const SymptomLog = require("../models/SymptomLog");
 
 const analyzeSymptomsFallback = (symptomText) => {
 	const text = symptomText.toLowerCase();
-
+	const hasAny = (keywords) => keywords.some((keyword) => text.includes(keyword));
 	const conditions = [];
+	const pushCondition = (label) => {
+		if (!conditions.includes(label)) {
+			conditions.push(label);
+		}
+	};
+
 	let specialistType = "General Physician";
 	let urgency = "low";
 	let advice = "Rest, hydrate, and monitor your symptoms for 24-48 hours.";
 
-	if (text.includes("chest pain") || text.includes("shortness of breath")) {
-		conditions.push("Cardiac or respiratory concern");
+	const redFlagDetected = hasAny([
+		"chest pain",
+		"shortness of breath",
+		"difficulty breathing",
+		"fainting",
+		"confusion",
+		"seizure",
+		"severe bleeding",
+		"blood in vomit",
+		"black stool",
+	]);
+
+	if (redFlagDetected) {
+		pushCondition("Potential emergency warning signs");
+		specialistType = "Emergency Medicine";
+		urgency = "high";
+		advice = "Seek urgent medical care immediately or visit the nearest emergency room.";
+	}
+
+	if (hasAny(["chest pain", "palpitations", "left arm pain", "pressure in chest"])) {
+		pushCondition("Possible cardiovascular concern");
 		specialistType = "Cardiologist";
 		urgency = "high";
 		advice =
 			"Seek urgent medical care immediately, especially if symptoms are sudden or severe.";
 	}
 
-	if (text.includes("fever") || text.includes("cough") || text.includes("sore throat")) {
-		conditions.push("Viral or respiratory infection");
+	if (
+		hasAny([
+			"fever",
+			"cough",
+			"sore throat",
+			"runny nose",
+			"body ache",
+			"chills",
+		])
+	) {
+		pushCondition("Possible viral or upper respiratory infection");
 		specialistType = specialistType === "General Physician" ? "General Physician" : specialistType;
 		urgency = urgency === "high" ? "high" : "medium";
 		advice =
@@ -26,8 +60,14 @@ const analyzeSymptomsFallback = (symptomText) => {
 				: "Hydrate, rest, and consult a physician if fever persists beyond 2 days.";
 	}
 
-	if (text.includes("stomach") || text.includes("vomit") || text.includes("nausea")) {
-		conditions.push("Gastrointestinal irritation");
+	if (hasAny(["wheezing", "persistent cough", "phlegm", "breathlessness"])) {
+		pushCondition("Possible lower respiratory tract irritation");
+		specialistType = specialistType === "General Physician" ? "Pulmonologist" : specialistType;
+		urgency = urgency === "high" ? "high" : "medium";
+	}
+
+	if (hasAny(["stomach", "vomit", "nausea", "diarrhea", "abdominal pain"])) {
+		pushCondition("Gastrointestinal irritation");
 		specialistType = specialistType === "General Physician" ? "Gastroenterologist" : specialistType;
 		urgency = urgency === "high" ? "high" : "medium";
 		advice =
@@ -36,14 +76,32 @@ const analyzeSymptomsFallback = (symptomText) => {
 				: "Prefer light meals, fluids, and consult a doctor if symptoms persist or worsen.";
 	}
 
-	if (text.includes("headache") || text.includes("migraine") || text.includes("dizziness")) {
-		conditions.push("Neurological or stress-related symptom");
+	if (hasAny(["headache", "migraine", "dizziness", "vertigo", "numbness"])) {
+		pushCondition("Neurological or stress-related symptom");
 		specialistType = specialistType === "General Physician" ? "Neurologist" : specialistType;
+		urgency = urgency === "high" ? "high" : urgency;
+	}
+
+	if (hasAny(["burning urination", "urine", "frequent urination", "pelvic pain"])) {
+		pushCondition("Possible urinary tract issue");
+		specialistType = specialistType === "General Physician" ? "Urologist" : specialistType;
+		urgency = urgency === "high" ? "high" : "medium";
+	}
+
+	if (hasAny(["rash", "itching", "skin redness", "hives"])) {
+		pushCondition("Possible dermatological reaction");
+		specialistType = specialistType === "General Physician" ? "Dermatologist" : specialistType;
 		urgency = urgency === "high" ? "high" : urgency;
 	}
 
 	if (conditions.length === 0) {
 		conditions.push("Non-specific symptoms");
+		advice = "Monitor symptoms, rest, stay hydrated, and seek care if symptoms worsen.";
+	}
+
+	if (urgency === "medium" && !redFlagDetected) {
+		advice =
+			"Schedule a doctor consultation within 24-48 hours if symptoms continue or increase.";
 	}
 
 	return {
