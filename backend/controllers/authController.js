@@ -13,6 +13,8 @@ const signToken = (user) => {
 const sanitizeUser = (userDoc) => {
 	return {
 		id: userDoc._id,
+		firstName: userDoc.firstName,
+		lastName: userDoc.lastName,
 		name: userDoc.name,
 		email: userDoc.email,
 		username: userDoc.username,
@@ -32,12 +34,32 @@ const sanitizeUser = (userDoc) => {
 
 const register = async (req, res, next) => {
 	try {
-		const { name, email, password, role, phone, username, hospitalId } = req.body;
+		const {
+			name,
+			firstName,
+			lastName,
+			email,
+			password,
+			role,
+			phone,
+			username,
+			hospitalId,
+			bloodType,
+			allergies,
+			specialization,
+			spec,
+			hospitalAffiliation,
+		} = req.body;
 
-		if (!name || !email || !password || !role) {
+		const trimmedFirstName = firstName ? String(firstName).trim() : "";
+		const trimmedLastName = lastName ? String(lastName).trim() : "";
+		const fullNameFromParts = `${trimmedFirstName} ${trimmedLastName}`.trim();
+		const resolvedName = name ? String(name).trim() : fullNameFromParts;
+
+		if (!resolvedName || !email || !password || !role) {
 			return res
 				.status(400)
-				.json({ message: "name, email, password and role are required." });
+				.json({ message: "name (or firstName + lastName), email, password and role are required." });
 		}
 
 		if (!["patient", "doctor"].includes(role)) {
@@ -49,6 +71,21 @@ const register = async (req, res, next) => {
 		const normalizedHospitalId = hospitalId
 			? hospitalId.toUpperCase().trim()
 			: undefined;
+		const normalizedSpecialization = (specialization || spec)
+			? String(specialization || spec).trim()
+			: undefined;
+		const normalizedAllergies = Array.isArray(allergies)
+			? allergies.map((a) => String(a).trim()).filter(Boolean)
+			: typeof allergies === "string"
+				? allergies
+					.split(",")
+					.map((a) => a.trim())
+					.filter(Boolean)
+				: [];
+
+		if (role === "doctor" && !normalizedHospitalId) {
+			return res.status(400).json({ message: "Hospital ID is required for doctor registration." });
+		}
 
 		const duplicateChecks = [{ email: normalizedEmail }];
 		if (normalizedUsername) {
@@ -72,17 +109,27 @@ const register = async (req, res, next) => {
 		}
 
 		const passwordHash = await bcrypt.hash(password, 10);
-
-		const user = await User.create({
-			...req.body,
-			name,
+		const userPayload = {
+			firstName: trimmedFirstName || undefined,
+			lastName: trimmedLastName || undefined,
+			name: resolvedName,
 			email: normalizedEmail,
 			username: normalizedUsername,
-			hospitalId: normalizedHospitalId,
 			passwordHash,
 			role,
 			phone,
-		});
+		};
+
+		if (role === "doctor") {
+			userPayload.hospitalId = normalizedHospitalId;
+			userPayload.specialization = normalizedSpecialization;
+			userPayload.hospitalAffiliation = hospitalAffiliation;
+		} else {
+			userPayload.bloodType = bloodType;
+			userPayload.allergies = normalizedAllergies;
+		}
+
+		const user = await User.create(userPayload);
 
 		const token = signToken(user);
 		return res.status(201).json({ token, user: sanitizeUser(user) });
@@ -93,7 +140,17 @@ const register = async (req, res, next) => {
 
 const login = async (req, res, next) => {
 	try {
-		const { email, mobile, phone, username, hospitalId, identifier, password, role } = req.body;
+		const {
+			email,
+			mobile,
+			phone,
+			username,
+			hospitalId,
+			identifier,
+			password,
+			role,
+			loginMode,
+		} = req.body;
 
 		if (!password) {
 			return res.status(400).json({ message: "Password is required." });
@@ -120,10 +177,21 @@ const login = async (req, res, next) => {
 		if (identifier) {
 			const rawIdentifier = String(identifier).trim();
 			const loweredIdentifier = rawIdentifier.toLowerCase();
-			loginIdentifiers.push({ email: loweredIdentifier });
-			loginIdentifiers.push({ username: loweredIdentifier });
-			loginIdentifiers.push({ hospitalId: rawIdentifier.toUpperCase() });
-			loginIdentifiers.push({ phone: rawIdentifier });
+
+			if (loginMode === "email") {
+				loginIdentifiers.push({ email: loweredIdentifier });
+			} else if (loginMode === "username") {
+				loginIdentifiers.push({ username: loweredIdentifier });
+			} else if (loginMode === "hospitalId") {
+				loginIdentifiers.push({ hospitalId: rawIdentifier.toUpperCase() });
+			} else if (loginMode === "mobile") {
+				loginIdentifiers.push({ phone: rawIdentifier });
+			} else {
+				loginIdentifiers.push({ email: loweredIdentifier });
+				loginIdentifiers.push({ username: loweredIdentifier });
+				loginIdentifiers.push({ hospitalId: rawIdentifier.toUpperCase() });
+				loginIdentifiers.push({ phone: rawIdentifier });
+			}
 		}
 
 		if (!loginIdentifiers.length) {
@@ -133,10 +201,12 @@ const login = async (req, res, next) => {
 			});
 		}
 
-		const query = loginIdentifiers.length === 1 ? loginIdentifiers[0] : { $or: loginIdentifiers };
+		const query = { $or: loginIdentifiers };
 
 		if (role && ["patient", "doctor"].includes(role)) {
 			query.role = role;
+		} else if (hospitalId || loginMode === "hospitalId") {
+			query.role = "doctor";
 		}
 
 		const user = await User.findOne(query);
