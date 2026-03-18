@@ -18,18 +18,14 @@ const {
 	validateDoctorPatientIdParam,
 	validateDoctorPatientsQuery,
 } = require("../middleware/requestValidation");
+const { getDoctorDashboard } = require("../controllers/dashboardController");
 
 const router = express.Router();
 
 router.use(verifyToken, requireRole("doctor"));
 
 
-router.get("/dashboard", (req, res) => {
-	res.status(200).json({
-		message: "Doctor dashboard data fetched successfully.",
-		user: req.user,
-	});
-});
+router.get("/dashboard", getDoctorDashboard);
 
 router.get("/patients", validateDoctorPatientsQuery, getMyAssignedPatients);
 router.post("/patients/:patientId/assign", validateDoctorPatientIdParam, assignPatientToDoctor);
