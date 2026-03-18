@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  TextInput, Switch, Alert,
+  TextInput, Switch, Alert, ActivityIndicator, RefreshControl,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import DrawerLayout from '../../components/DrawerLayout';
 import { useTheme } from '../../context/ThemeContext';
 import { useBadges } from '../../context/BadgeContext';
 import { Card, CardHeader, Button } from '../../components/UI';
+import { authAPI, User } from '../../services/api';
 
 type Tab = 'profile' | 'health' | 'notifications' | 'security' | 'alerts';
 
@@ -75,10 +77,43 @@ function PrefRow({
 /* ═══════════════════ DOCTOR PROFILE ═══════════════════════════════ */
 function DoctorProfile() {
   const { colors, isDark } = useTheme();
-  // ✅ Read doctor settings from context — persists globally
+  const router = useRouter();
   const { doctorSettings, toggleDoctorSetting } = useBadges();
   const [tab, setTab] = useState<Tab>('profile');
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const accent = colors.primary;
+
+  const loadUser = async () => {
+    try {
+      const userData = await authAPI.me();
+      setUser(userData);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to load user');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadUser();
+  }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadUser();
+    setRefreshing(false);
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await authAPI.logout();
+      router.replace('/screens/LoginScreen');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to logout');
+    }
+  };
 
   const tabs = [
     { key: 'profile', label: '👨‍⚕️ Profile' },
@@ -100,43 +135,53 @@ function DoctorProfile() {
     <>
       {/* Header */}
       <View style={[dh.header, { backgroundColor: isDark ? '#0d1b3e' : '#0C1F6B' }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 }}>
-          <View style={dh.avatar}><Text style={{ fontSize: 28 }}>👨‍⚕️</Text></View>
-          <View style={{ flex: 1 }}>
-            <Text style={dh.name}>Dr. Arun Sharma</Text>
-            <Text style={dh.spec}>General Physician</Text>
-            <Text style={dh.hosp}>City General Hospital</Text>
-          </View>
-        </View>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
-          {['🏥 HOSP-2024-001', '👥 28 Patients', '⭐ 4.9 Rating'].map(c => (
-            <View key={c} style={dh.chip}><Text style={dh.chipTxt}>{c}</Text></View>
-          ))}
-        </View>
-        <View style={dh.statsRow}>
-          {[['28', 'Patients'], ['92%', 'Adherence'], ['5', 'Pending'], ['2', 'Critical']].map(([v, l]) => (
-            <View key={l} style={dh.statItem}>
-              <Text style={dh.statVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{v}</Text>
-              <Text style={dh.statLbl} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{l}</Text>
+        {loading ? (
+          <ActivityIndicator color="white" size="small" />
+        ) : (
+          <>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+              <View style={dh.avatar}><Text style={{ fontSize: 28 }}>👨‍⚕️</Text></View>
+              <View style={{ flex: 1 }}>
+                <Text style={dh.name}>{user?.name || 'Doctor'}</Text>
+                <Text style={dh.spec}>{user?.specialization || 'General Physician'}</Text>
+                <Text style={dh.hosp}>{user?.hospitalAffiliation || 'Hospital'}</Text>
+              </View>
             </View>
-          ))}
-        </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+              {[
+                `🏥 ${user?.hospitalId || 'N/A'}`,
+                `👥 ${user?.assignedDoctorId ? 'Assigned' : '0'} Patients`,
+              ].map(c => (
+                <View key={c} style={dh.chip}><Text style={dh.chipTxt}>{c}</Text></View>
+              ))}
+            </View>
+            <View style={dh.statsRow}>
+              {[['0', 'Patients'], ['--', 'Adherence'], ['0', 'Pending'], ['0', 'Critical']].map(([v, l]) => (
+                <View key={l} style={dh.statItem}>
+                  <Text style={dh.statVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{v}</Text>
+                  <Text style={dh.statLbl} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{l}</Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
       </View>
 
       <TabBar tabs={tabs} active={tab} onSelect={(k) => setTab(k as Tab)} accent={accent} />
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[accent]} />}>
 
         {tab === 'profile' && (
           <Card>
             <CardHeader title="Professional Information" />
             <View style={{ padding: 16 }}>
               {[
-                ['Full Name', 'Dr. Arun Sharma'],
-                ['Specialisation', 'General Physician'],
-                ['Hospital', 'City General Hospital'],
-                ['Hospital ID', 'HOSP-2024-001'],
-                ['Email', 'dr.sharma@hospital.com'],
-                ['Phone', '+91 98765 43210'],
+                ['Full Name', user?.name || ''],
+                ['Specialisation', user?.specialization || ''],
+                ['Hospital', user?.hospitalAffiliation || ''],
+                ['Hospital ID', user?.hospitalId || ''],
+                ['Email', user?.email || ''],
+                ['Phone', user?.phone || user?.mobile || ''],
               ].map(([l, v]) => <Field key={l} label={l} value={v} colors={colors} />)}
               <Button label="Save Changes" onPress={() => Alert.alert('Saved ✅')} />
             </View>
@@ -178,7 +223,7 @@ function DoctorProfile() {
               <CardHeader title="📋 Doctor License" />
               <View style={{ padding: 16 }}>
                 {[
-                  ['License No.', 'MCI-2024-78901'],
+                  ['License No.', user?.hospitalId || 'N/A'],
                   ['Valid Until', 'December 2026'],
                   ['Issued By', 'Medical Council of India'],
                 ].map(([l, v], i, a) => (
@@ -192,6 +237,12 @@ function DoctorProfile() {
                 ))}
               </View>
             </Card>
+            <Card style={{ marginTop: 0 }}>
+              <CardHeader title="🚪 Logout" />
+              <View style={{ padding: 16 }}>
+                <Button label="Logout" onPress={handleLogout} variant="danger" style={{ width: '100%' }} />
+              </View>
+            </Card>
           </>
         )}
       </ScrollView>
@@ -202,11 +253,45 @@ function DoctorProfile() {
 /* ═══════════════════ PATIENT PROFILE ══════════════════════════════ */
 function PatientProfile() {
   const { colors, isDark } = useTheme();
-  // ✅ Read patient settings from context — persists globally
+  const router = useRouter();
   const { patientSettings, togglePatientSetting } = useBadges();
   const [tab, setTab] = useState<Tab>('profile');
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [bloodType, setBloodType] = useState('O+');
   const accent = colors.teal;
+
+  const loadUser = async () => {
+    try {
+      const userData = await authAPI.me();
+      setUser(userData);
+      setBloodType(userData.bloodType || 'O+');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to load user');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadUser();
+  }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadUser();
+    setRefreshing(false);
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await authAPI.logout();
+      router.replace('/screens/LoginScreen');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to logout');
+    }
+  };
 
   const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
 
@@ -231,36 +316,47 @@ function PatientProfile() {
     <>
       {/* Header */}
       <View style={[ph.header, { backgroundColor: isDark ? '#052e2e' : '#064E4E' }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 }}>
-          <View style={ph.avatar}>
-            <Text style={ph.avatarTxt}>RS</Text>
-            <View style={ph.editBtn}><Text style={{ fontSize: 10 }}>✏️</Text></View>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={ph.name}>Rahul Singh</Text>
-            <Text style={ph.email}>rahul.singh@email.com · Patient</Text>
-            <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>Member since March 2026</Text>
-          </View>
-        </View>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
-          {['🩸 O+', '⚠️ Penicillin Allergy', '🆔 MV-2024-RS-001'].map(c => (
-            <View key={c} style={ph.chip}><Text style={ph.chipTxt}>{c}</Text></View>
-          ))}
-        </View>
-        <View style={ph.statsRow}>
-          {[['❤️', '85', 'Health'], ['✅', '92%', 'Adherence'], ['🔥', '7d', 'Streak'], ['💊', '3', 'Medicines']].map(([ic, v, l]) => (
-            <View key={l} style={ph.statItem}>
-              <Text style={{ fontSize: 16 }}>{ic}</Text>
-              <Text style={ph.statVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{v}</Text>
-              <Text style={ph.statLbl} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{l}</Text>
+        {loading ? (
+          <ActivityIndicator color="white" size="small" />
+        ) : (
+          <>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+              <View style={ph.avatar}>
+                <Text style={ph.avatarTxt}>{user?.name?.split(' ').map((n: string) => n[0]).join('') || 'U'}</Text>
+                <View style={ph.editBtn}><Text style={{ fontSize: 10 }}>✏️</Text></View>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={ph.name}>{user?.name || 'Patient'}</Text>
+                <Text style={ph.email}>{user?.email || ''} · Patient</Text>
+                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>Member since {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}</Text>
+              </View>
             </View>
-          ))}
-        </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+              {[
+                `🩸 ${user?.bloodType || 'Unknown'}`,
+                user?.allergies && user.allergies.length > 0 ? `⚠️ ${user.allergies[0]}` : '',
+                `🆔 ${user?._id?.substring(0, 12) || 'N/A'}`,
+              ].filter(Boolean).map(c => (
+                <View key={c} style={ph.chip}><Text style={ph.chipTxt}>{c}</Text></View>
+              ))}
+            </View>
+            <View style={ph.statsRow}>
+              {[['❤️', '--', 'Health'], ['✅', '--%', 'Adherence'], ['🔥', '0d', 'Streak'], ['💊', '0', 'Medicines']].map(([ic, v, l]) => (
+                <View key={l} style={ph.statItem}>
+                  <Text style={{ fontSize: 16 }}>{ic}</Text>
+                  <Text style={ph.statVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{v}</Text>
+                  <Text style={ph.statLbl} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{l}</Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
       </View>
 
       <TabBar tabs={tabs} active={tab} onSelect={(k) => setTab(k as Tab)} accent={accent} />
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[accent]} />}>
 
         {tab === 'profile' && (
           <Card>
@@ -269,16 +365,16 @@ function PatientProfile() {
               <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
                 <View style={{ flex: 1 }}>
                   <Text style={[ft.label, { color: colors.textMuted }]}>First Name</Text>
-                  <TextInput style={[ft.input, { backgroundColor: colors.bgPage, borderColor: colors.border, color: colors.textPrimary }]} defaultValue="Rahul" />
+                  <TextInput style={[ft.input, { backgroundColor: colors.bgPage, borderColor: colors.border, color: colors.textPrimary }]} defaultValue={user?.firstName || ''} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[ft.label, { color: colors.textMuted }]}>Last Name</Text>
-                  <TextInput style={[ft.input, { backgroundColor: colors.bgPage, borderColor: colors.border, color: colors.textPrimary }]} defaultValue="Singh" />
+                  <TextInput style={[ft.input, { backgroundColor: colors.bgPage, borderColor: colors.border, color: colors.textPrimary }]} defaultValue={user?.lastName || ''} />
                 </View>
               </View>
-              <Field label="Email" value="rahul.singh@email.com" colors={colors} />
-              <Field label="Phone" value="+91 98765 43210" colors={colors} />
-              <Field label="Address" value="A-42, Sector 18, Noida" colors={colors} />
+              <Field label="Email" value={user?.email || ''} colors={colors} />
+              <Field label="Phone" value={user?.phone || user?.mobile || ''} colors={colors} />
+              <Field label="Address" value="" colors={colors} />
               <Button label="Save Changes" onPress={() => Alert.alert('Saved ✅')} />
             </View>
           </Card>
@@ -297,11 +393,11 @@ function PatientProfile() {
                   </TouchableOpacity>
                 ))}
               </View>
-              <Field label="Height (cm)" value="175" colors={colors} />
-              <Field label="Weight (kg)" value="72" colors={colors} />
-              <Field label="Allergies" value="Penicillin, Sulfa drugs" colors={colors} />
-              <Field label="Conditions" value="None" colors={colors} />
-              <Field label="Emergency Contact" value="Amit Singh — +91 87654 32109" colors={colors} />
+              <Field label="Height (cm)" value="" colors={colors} />
+              <Field label="Weight (kg)" value="" colors={colors} />
+              <Field label="Allergies" value={user?.allergies?.join(', ') || ''} colors={colors} />
+              <Field label="Conditions" value="" colors={colors} />
+              <Field label="Emergency Contact" value={user?.emergencyContact?.name ? `${user.emergencyContact.name} — ${user.emergencyContact.phone || ''}` : ''} colors={colors} />
               <Button label="Save Health Info" onPress={() => Alert.alert('Saved ✅')} />
             </View>
           </Card>
@@ -336,6 +432,12 @@ function PatientProfile() {
                 <Field label="New Password" value="" secure colors={colors} />
                 <Field label="Confirm Password" value="" secure colors={colors} />
                 <Button label="Update Password" onPress={() => Alert.alert('Updated ✅')} />
+              </View>
+            </Card>
+            <Card style={{ marginTop: 0 }}>
+              <CardHeader title="🚪 Logout" />
+              <View style={{ padding: 16 }}>
+                <Button label="Logout" onPress={handleLogout} variant="danger" style={{ width: '100%' }} />
               </View>
             </Card>
             <Card style={{ marginTop: 0 }}>

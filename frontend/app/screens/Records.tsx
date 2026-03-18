@@ -1,47 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Modal, TextInput, Alert,
+  Modal, TextInput, Alert, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import DrawerLayout from '../../components/DrawerLayout';
 import Colors from '../../constants/colors';
 import { StatCard, Card, CardHeader, Badge, Button } from '../../components/UI';
+import { patientAPI, doctorAPI, MedRecord } from '../../services/api';
 
 interface RecordItem {
-  id: number; date: string; doctor: string; hospital: string;
-  diagnosis: string; notes: string;
-  medicines: string[]; files: { name: string; icon: string }[];
+  _id: string; date: string; doctor?: string; hospital?: string;
+  diagnosis: string; notes?: string;
+  medicines?: string[]; fileUrls?: string[];
   type: 'Admission' | 'OPD' | 'Check-up' | 'Emergency';
 }
 
-const RECORDS: RecordItem[] = [
-  {
-    id: 1, date: 'Mar 14, 2026', doctor: 'Dr. Meera Kapoor', hospital: 'City General Hospital',
-    diagnosis: 'Dengue Fever (NS1 Positive)',
-    notes: 'Patient admitted with high fever, thrombocytopenia confirmed. IV fluids started. Paracetamol prescribed. Rest advised.',
-    medicines: ['Paracetamol 500mg (BD)', 'Vitamin C 1000mg (OD)', 'Antibiotic 250mg (TDS)'],
-    files: [{ name: 'Blood Test', icon: '🔬' }, { name: 'Chest X-Ray', icon: '🫁' }],
-    type: 'Admission',
-  },
-  {
-    id: 2, date: 'Feb 10, 2026', doctor: 'Dr. Arun Sharma', hospital: 'Apollo Clinic',
-    diagnosis: 'Upper Respiratory Infection',
-    notes: 'Mild throat infection. Antibiotic prescribed for 5 days. Follow-up in 1 week.',
-    medicines: ['Amoxicillin 500mg (TDS)', 'Cough Syrup (TDS)'],
-    files: [{ name: 'Throat Culture', icon: '🧫' }],
-    type: 'OPD',
-  },
-  {
-    id: 3, date: 'Jan 5, 2026', doctor: 'Dr. Priya Singh', hospital: 'HealthCare Plus',
-    diagnosis: 'Annual Health Check-up',
-    notes: 'All vitals normal. Blood sugar slightly elevated — dietary advice given. Next check-up in 6 months.',
-    medicines: ['Multivitamin (OD)'],
-    files: [{ name: 'Full Blood Panel', icon: '🔬' }, { name: 'ECG', icon: '❤️' }],
-    type: 'Check-up',
-  },
-];
+const RECORDS: RecordItem[] = [];
 
 const TYPE_STYLE: Record<string, { bg: string; color: string; badge: 'danger' | 'primary' | 'success' | 'warning'; icon: string }> = {
   Admission: { bg: Colors.dangerSoft,  color: Colors.danger,   badge: 'danger',  icon: '🏥' },
@@ -53,18 +29,50 @@ const TYPE_STYLE: Record<string, { bg: string; color: string; badge: 'danger' | 
 export default function RecordsScreen() {
   const router = useRouter();
   const { role, userName, userInitial, colors } = useTheme();
-  const [records, setRecords] = useState(RECORDS);
+  const [records, setRecords] = useState<MedRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
-  const [expanded, setExpanded] = useState<number | null>(1);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   const [form, setForm] = useState({ date: '', doctor: '', hospital: '', diagnosis: '', notes: '', type: 'OPD' as RecordItem['type'] });
 
-  const addRecord = () => {
+  const loadRecords = async () => {
+    try {
+      const data = await patientAPI.getRecords();
+      setRecords(data);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to load records');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRecords();
+  }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadRecords();
+    setRefreshing(false);
+  }, []);
+
+  const addRecord = async () => {
     if (!form.diagnosis) return;
-    const newRecord: RecordItem = { id: Date.now(), ...form, medicines: [], files: [] };
-    setRecords(prev => [newRecord, ...prev]);
-    setShowAdd(false);
-    setForm({ date: '', doctor: '', hospital: '', diagnosis: '', notes: '', type: 'OPD' });
+    try {
+      const newRecord = await doctorAPI.createRecord({
+        patientId: '',
+        diagnosis: form.diagnosis,
+        notes: form.notes,
+        date: form.date || new Date().toISOString(),
+      });
+      setRecords(prev => [newRecord, ...prev]);
+      setShowAdd(false);
+      setForm({ date: '', doctor: '', hospital: '', diagnosis: '', notes: '', type: 'OPD' });
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to create record');
+    }
   };
 
   const visitTypes: RecordItem['type'][] = ['OPD', 'Admission', 'Check-up', 'Emergency'];
@@ -78,24 +86,40 @@ export default function RecordsScreen() {
         <Button label="+ Add" onPress={() => setShowAdd(true)} size="sm" style={{ backgroundColor: 'rgba(255,255,255,0.2)' }} />
       }>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />}>
 
         {/* Stats */}
         <View style={styles.statsGrid}>
-          <View style={styles.statHalf}><StatCard icon="📋" value={records.length} label="Total Records" /></View>
-          <View style={styles.statHalf}><StatCard icon="🏥" value={records.filter(r => r.type === 'Admission').length} label="Admissions" iconBg={Colors.dangerSoft} valueColor={Colors.danger} /></View>
-          <View style={styles.statHalf}><StatCard icon="🩺" value={records.filter(r => r.type === 'OPD').length} label="OPD Visits" iconBg={Colors.tealSoft} valueColor={Colors.teal} /></View>
-          <View style={styles.statHalf}><StatCard icon="✅" value={records.filter(r => r.type === 'Check-up').length} label="Check-ups" iconBg={Colors.successSoft} valueColor={Colors.success} /></View>
+          <View style={styles.statHalf}>
+            {loading ? <StatCard icon="📋" value="-" label="Total Records" /> : <StatCard icon="📋" value={records.length} label="Total Records" />}
+          </View>
+          <View style={styles.statHalf}><StatCard icon="🏥" value={0} label="Admissions" iconBg={Colors.dangerSoft} valueColor={Colors.danger} /></View>
+          <View style={styles.statHalf}><StatCard icon="🩺" value={0} label="OPD Visits" iconBg={Colors.tealSoft} valueColor={Colors.teal} /></View>
+          <View style={styles.statHalf}><StatCard icon="✅" value={0} label="Check-ups" iconBg={Colors.successSoft} valueColor={Colors.success} /></View>
         </View>
 
         {/* Records */}
-        {records.map(record => {
-          const ts = TYPE_STYLE[record.type] || TYPE_STYLE.OPD;
-          const open = expanded === record.id;
-          return (
-            <View key={record.id} style={[styles.recordCard, { borderLeftColor: ts.color }]}>
+        {loading ? (
+          <View style={{ alignItems: 'center', padding: 40 }}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={{ fontSize: 13, color: Colors.gray500, marginTop: 10 }}>Loading records...</Text>
+          </View>
+        ) : records.length === 0 ? (
+          <View style={{ alignItems: 'center', padding: 40 }}>
+            <Text style={{ fontSize: 40, marginBottom: 10 }}>📋</Text>
+            <Text style={{ fontWeight: '600', fontSize: 15, color: Colors.gray700 }}>No records found</Text>
+            <Text style={{ fontSize: 12, color: Colors.gray500, marginTop: 4 }}>Your medical records will appear here</Text>
+          </View>
+        ) : (
+          records.map(record => {
+            const recordType = 'Check-up';
+            const ts = TYPE_STYLE[recordType] || TYPE_STYLE.OPD;
+            const open = expanded === record._id;
+            return (
+              <View key={record._id} style={[styles.recordCard, { borderLeftColor: ts.color }]}>
               {/* Header - tap to expand */}
-              <TouchableOpacity onPress={() => setExpanded(open ? null : record.id)} style={{ padding: 16 }} activeOpacity={0.7}>
+              <TouchableOpacity onPress={() => setExpanded(open ? null : record._id)} style={{ padding: 16 }} activeOpacity={0.7}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   <View style={[styles.recordIcon, { backgroundColor: ts.bg }]}>
                     <Text style={{ fontSize: 20 }}>{ts.icon}</Text>
@@ -103,10 +127,10 @@ export default function RecordsScreen() {
                   <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <Text style={{ fontWeight: '800', fontSize: 14, color: Colors.gray800 }}>{record.diagnosis}</Text>
-                      <Badge label={record.type} type={ts.badge} />
+                      <Badge label={recordType} type={ts.badge} />
                     </View>
                     <Text style={{ fontSize: 11, color: Colors.gray500, marginTop: 3 }}>
-                      📅 {record.date} · 👨‍⚕️ {record.doctor}
+                      📅 {record.date ? new Date(record.date).toLocaleDateString() : 'N/A'} · 👨‍⚕️ {record.doctorId || 'N/A'}
                     </Text>
                   </View>
                   <Text style={{ color: Colors.gray400, fontSize: 14 }}>{open ? '▲' : '▼'}</Text>
@@ -125,7 +149,7 @@ export default function RecordsScreen() {
                     </View>
                   ) : null}
 
-                  {record.medicines.length > 0 && (
+                  {record.medicines && record.medicines.length > 0 && (
                     <View style={{ marginBottom: 16 }}>
                       <Text style={styles.sectionLabel}>PRESCRIBED MEDICINES</Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -136,14 +160,14 @@ export default function RecordsScreen() {
                     </View>
                   )}
 
-                  {record.files.length > 0 && (
+                  {record.fileUrls && record.fileUrls.length > 0 && (
                     <View>
                       <Text style={styles.sectionLabel}>ATTACHED FILES</Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                        {record.files.map((f, i) => (
-                          <TouchableOpacity key={i} style={styles.fileBtn} onPress={() => Alert.alert('View', `Opening ${f.name}`)}>
-                            <Text style={{ fontSize: 18 }}>{f.icon}</Text>
-                            <Text style={{ fontSize: 12, fontWeight: '600', color: Colors.gray700 }}>{f.name}</Text>
+                        {record.fileUrls.map((f, i) => (
+                          <TouchableOpacity key={i} style={styles.fileBtn} onPress={() => Alert.alert('View', `Opening file`)}>
+                            <Text style={{ fontSize: 18 }}>📄</Text>
+                            <Text style={{ fontSize: 12, fontWeight: '600', color: Colors.gray700 }}>Report {i + 1}</Text>
                             <Text style={{ fontSize: 11, color: Colors.primary }}>View →</Text>
                           </TouchableOpacity>
                         ))}
@@ -154,7 +178,8 @@ export default function RecordsScreen() {
               )}
             </View>
           );
-        })}
+          })
+        )}
       </ScrollView>
 
       {/* Add Record Modal */}

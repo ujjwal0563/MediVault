@@ -1,19 +1,23 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, KeyboardAvoidingView, Platform,
+  ScrollView, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import Colors from '../../constants/colors';
 import { Button, ProgressBar } from '../../components/UI';
+import { authAPI } from '../../services/api';
+import { useTheme } from '../../context/ThemeContext';
 
 type Role = 'patient' | 'doctor';
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const { setUser } = useTheme();
   const [role, setRole] = useState<Role>('patient');
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -33,13 +37,70 @@ export default function RegisterScreen() {
     { n: 3, label: 'Health profile' },
   ];
 
-  const handleSubmit = () => {
-    if (password !== confirm) return;
+  const validateStep2 = (): string[] => {
+    const errors: string[] = [];
+    if (!firstName.trim()) errors.push('First name is required');
+    if (!lastName.trim()) errors.push('Last name is required');
+    if (!email.trim()) {
+      errors.push('Email is required');
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errors.push('Please enter a valid email address');
+    }
+    if (role === 'doctor' && !hospitalId.trim()) errors.push('Hospital ID is required for doctors');
+    return errors;
+  };
+
+  const handleNextFromStep2 = () => {
+    const errors = validateStep2();
+    if (errors.length > 0) {
+      setValidationErrors(errors);
+      return;
+    }
+    setValidationErrors([]);
+    setStep(3);
+  };
+
+  const handleSubmit = async () => {
+    if (password !== confirm) {
+      Alert.alert('Error', 'Passwords do not match');
+      return;
+    }
+    if (password.length < 8) {
+      Alert.alert('Error', 'Password must be at least 8 characters');
+      return;
+    }
+
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const registerData: Parameters<typeof authAPI.register>[0] = {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim(),
+        password,
+        role,
+      };
+
+      if (username.trim()) registerData.username = username.trim();
+      if (phone.trim()) registerData.phone = phone.trim();
+      if (role === 'doctor') {
+        if (hospitalId.trim()) registerData.hospitalId = hospitalId.trim();
+        if (spec) registerData.specialization = spec;
+      } else {
+        if (bloodType) registerData.bloodType = bloodType;
+        if (allergies.trim()) {
+          registerData.allergies = allergies.split(',').map(a => a.trim()).filter(Boolean);
+        }
+      }
+
+      const result = await authAPI.register(registerData);
+      setUser(result.user.role, result.user.name || `${firstName} ${lastName}`.trim());
+      router.replace(result.user.role === 'doctor' ? '/screens/DoctorDashboard' : '/screens/PatientDashboard');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Registration failed. Please try again.';
+      Alert.alert('Registration Failed', message);
+    } finally {
       setLoading(false);
-      router.replace(role === 'doctor' ? '/screens/DoctorDashboard' : '/screens/PatientDashboard');
-    }, 900);
+    }
   };
 
   const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
@@ -132,9 +193,17 @@ export default function RegisterScreen() {
                 <TextInput style={styles.input} placeholder="HOSP-2024-001" value={hospitalId} onChangeText={setHospitalId} placeholderTextColor={Colors.gray400} />
               </View>
             )}
+            {/* Validation Errors */}
+            {validationErrors.length > 0 && (
+              <View style={styles.errorBox}>
+                {validationErrors.map((err, idx) => (
+                  <Text key={idx} style={styles.errorText}>• {err}</Text>
+                ))}
+              </View>
+            )}
             <View style={styles.navRow}>
-              <Button label="← Back" onPress={() => setStep(1)} variant="outline" style={{ flex: 1, marginRight: 8 }} />
-              <Button label="Continue →" onPress={() => setStep(3)} style={{ flex: 2 }} />
+              <Button label="← Back" onPress={() => { setValidationErrors([]); setStep(1); }} variant="outline" style={{ flex: 1, marginRight: 8 }} />
+              <Button label="Continue →" onPress={handleNextFromStep2} style={{ flex: 2 }} />
             </View>
           </View>
         )}
@@ -239,4 +308,6 @@ const styles = StyleSheet.create({
   summaryTitle: { fontWeight: '700', color: Colors.primary, marginBottom: 6, fontSize: 13 },
   summaryRow: { fontSize: 12, color: Colors.gray600, lineHeight: 22 },
   summaryVal: { fontWeight: '700', color: Colors.gray800 },
+  errorBox: { backgroundColor: Colors.dangerSoft, borderWidth: 1, borderColor: Colors.danger, borderRadius: 8, padding: 12, marginBottom: 16 },
+  errorText: { fontSize: 12, color: Colors.danger, marginBottom: 4 },
 });

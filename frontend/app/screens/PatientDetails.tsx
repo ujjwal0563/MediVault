@@ -1,21 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  Modal, TextInput, Alert,
+  Modal, TextInput, Alert, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { ScrollView } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import DrawerLayout from '../../components/DrawerLayout';
 import { Card, CardHeader, Badge, Button, ProgressBar } from '../../components/UI';
+import { doctorAPI, Patient, MedRecord, Report, Medicine } from '../../services/api';
 
 type Tab = 'medications' | 'reports' | 'symptoms' | 'timeline';
-
-interface Patient {
-  name: string;
-  condition: string;
-  [key: string]: any;
-}
 
 const MEDICATIONS: any[] = [];
 const REPORTS: any[] = [];
@@ -24,12 +19,47 @@ export default function PatientDetailsScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const params = useLocalSearchParams<{ id?: string }>();
+  const patientId = params.id;
 
   const [patient, setPatient] = useState<Patient | null>(null);
+  const [records, setRecords] = useState<MedRecord[]>([]);
+  const [reports, setReports] = useState<Report[]>([]);
+  const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<Tab>('medications');
   const [showSMS, setShowSMS] = useState(false);
   const [smsMsg, setSmsMsg] = useState('');
   const [obs, setObs] = useState('');
+
+  const loadPatientData = async () => {
+    if (!patientId) return;
+    try {
+      const [recordsData, reportsData, medicinesData] = await Promise.all([
+        doctorAPI.getPatientRecords(patientId),
+        doctorAPI.getPatientReports(patientId),
+        doctorAPI.getPatientMedicines(patientId),
+      ]);
+      setPatient(recordsData.patient);
+      setRecords(recordsData.records);
+      setReports(reportsData.reports);
+      setMedicines(medicinesData);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to load patient data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPatientData();
+  }, [patientId]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadPatientData();
+    setRefreshing(false);
+  }, [patientId]);
 
   const initials = patient?.name
     ? patient.name.split(' ').map((n: string) => n[0]).join('')
@@ -45,7 +75,7 @@ export default function PatientDetailsScreen() {
   return (
     <DrawerLayout
       title="Patient Details"
-      subtitle={patient ? `${patient.name} — ${patient.condition}` : 'No patient data'}
+      subtitle={patient ? patient.name : 'Loading...'}
       role="doctor"
       userName="Dr. Sharma"
       userInitial="DS"
@@ -56,26 +86,35 @@ export default function PatientDetailsScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
         style={{ backgroundColor: colors.bgPage }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />}
       >
 
         {/* Patient Header */}
-        <Card style={{ marginBottom: 16 }}>
-          <View style={{ padding: 16 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 14 }}>
-              <View style={[s.bigAvatar, { backgroundColor: colors.primarySoft, borderColor: colors.primary }]}>
-                <Text style={{ fontSize: 24, fontWeight: '900', color: colors.primary }}>{initials}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <Text style={{ fontWeight: '700', fontSize: 16, color: colors.textPrimary }}>
-                    {patient?.name || 'Unknown Patient'}
-                  </Text>
-                  <Badge label={patient?.condition || 'No Condition'} type="primary" />
+        {loading ? (
+          <View style={{ alignItems: 'center', padding: 40 }}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={{ fontSize: 13, color: colors.textMuted, marginTop: 10 }}>Loading patient...</Text>
+          </View>
+        ) : (
+          <Card style={{ marginBottom: 16 }}>
+            <View style={{ padding: 16 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 14 }}>
+                <View style={[s.bigAvatar, { backgroundColor: colors.primarySoft, borderColor: colors.primary }]}>
+                  <Text style={{ fontSize: 24, fontWeight: '900', color: colors.primary }}>{initials}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <Text style={{ fontWeight: '700', fontSize: 16, color: colors.textPrimary }}>
+                      {patient?.name || 'Unknown Patient'}
+                    </Text>
+                    {patient?.bloodType && <Badge label={patient.bloodType} type="danger" />}
+                  </View>
+                  <Text style={{ fontSize: 12, color: colors.textMuted }}>{patient?.email}</Text>
                 </View>
               </View>
             </View>
-          </View>
-        </Card>
+          </Card>
+        )}
 
         {/* Tabs */}
         <ScrollView
@@ -100,34 +139,35 @@ export default function PatientDetailsScreen() {
         {/* MEDICATIONS TAB */}
         {tab === 'medications' && (
           <Card>
-            <CardHeader title="📊 Medication Adherence" right={<Badge label="92% Overall" type="success" />} />
+            <CardHeader title="📊 Medication Adherence" right={<Badge label={`${medicines.length} Active`} type="success" />} />
             <View style={{ padding: 16 }}>
               <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
                 <View style={[s.streakBox, { backgroundColor: colors.successSoft, borderColor: colors.success + '40' }]}>
                   <Text style={{ fontSize: 10, fontWeight: '700', color: colors.success, textTransform: 'uppercase' }}>Current Streak</Text>
-                  <Text style={{ fontSize: 24, fontWeight: '900', color: colors.success, marginTop: 4 }}>{patient?.streak ?? '—'}d 🔥</Text>
+                  <Text style={{ fontSize: 24, fontWeight: '900', color: colors.success, marginTop: 4 }}>—d 🔥</Text>
                 </View>
                 <View style={[s.streakBox, { backgroundColor: colors.primarySoft, borderColor: colors.primary + '40' }]}>
                   <Text style={{ fontSize: 10, fontWeight: '700', color: colors.primary, textTransform: 'uppercase' }}>Adherence Rate</Text>
-                  <Text style={{ fontSize: 24, fontWeight: '900', color: colors.primary, marginTop: 4 }}>{patient?.adherence ?? '—'}%</Text>
+                  <Text style={{ fontSize: 24, fontWeight: '900', color: colors.primary, marginTop: 4 }}>—%</Text>
                 </View>
               </View>
-              {MEDICATIONS.map((med, i) => (
-                <View key={i} style={[{ paddingVertical: 12 }, i < MEDICATIONS.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.borderSoft }]}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: med.status === 'taken' ? colors.success : colors.danger }} />
-                      <Text style={{ fontWeight: '600', fontSize: 14, color: colors.textPrimary }}>{med.name}</Text>
-                      <Text style={{ fontSize: 11, color: colors.textFaint }}>{med.freq}</Text>
+              {medicines.length === 0 ? (
+                <Text style={{ textAlign: 'center', color: colors.textMuted, paddingVertical: 20 }}>No medications found</Text>
+              ) : (
+                medicines.map((med, i) => (
+                  <View key={med._id} style={[{ paddingVertical: 12 }, i < medicines.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.borderSoft }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: med.isActive ? colors.success : colors.danger }} />
+                        <Text style={{ fontWeight: '600', fontSize: 14, color: colors.textPrimary }}>{med.name}</Text>
+                        <Text style={{ fontSize: 11, color: colors.textFaint }}>{med.frequency}</Text>
+                      </View>
+                      <Badge label={med.isActive ? 'Active' : 'Inactive'} type={med.isActive ? 'success' : 'danger'} />
                     </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Badge label={med.status === 'taken' ? '✓ Taken' : '✗ Missed'} type={med.status === 'taken' ? 'success' : 'danger'} />
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textPrimary }}>{med.adherence}%</Text>
-                    </View>
+                    <Text style={{ fontSize: 12, color: colors.textMuted }}>{med.dosage} - {med.instructions || 'No instructions'}</Text>
                   </View>
-                  <ProgressBar value={med.adherence} color={med.adherence >= 90 ? colors.success : colors.danger} />
-                </View>
-              ))}
+                ))
+              )}
             </View>
           </Card>
         )}
@@ -137,24 +177,30 @@ export default function PatientDetailsScreen() {
           <Card>
             <CardHeader title="📋 Latest Reports" />
             <View style={{ padding: 16 }}>
-              {REPORTS.map((r, i) => (
-                <View key={i} style={[{ paddingBottom: 14 }, i === 0 && { borderBottomWidth: 1, borderBottomColor: colors.borderSoft, marginBottom: 14 }]}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <Text style={{ fontSize: 26 }}>{r.icon}</Text>
-                      <View>
-                        <Text style={{ fontWeight: '700', fontSize: 14, color: colors.textPrimary }}>{r.name}</Text>
-                        <Text style={{ fontSize: 11, color: colors.textFaint }}>Uploaded {r.date}</Text>
+              {reports.length === 0 ? (
+                <Text style={{ textAlign: 'center', color: colors.textMuted, paddingVertical: 20 }}>No reports found</Text>
+              ) : (
+                reports.map((r, i) => (
+                  <View key={r._id} style={[{ paddingBottom: 14 }, i < reports.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.borderSoft, marginBottom: 14 }]}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <Text style={{ fontSize: 26 }}>📄</Text>
+                        <View>
+                          <Text style={{ fontWeight: '700', fontSize: 14, color: colors.textPrimary }}>{r.originalName}</Text>
+                          <Text style={{ fontSize: 11, color: colors.textFaint }}>Uploaded {new Date(r.createdAt).toLocaleDateString()}</Text>
+                        </View>
                       </View>
+                      <Badge label={r.reportType} type="primary" />
                     </View>
-                    <Badge label={r.status} type={r.status === 'Normal' ? 'success' : 'danger'} />
+                    {r.aiSummary && (
+                      <View style={[s.aiBox, { backgroundColor: colors.bgPage, borderLeftColor: colors.primary }]}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: colors.primary, marginBottom: 4 }}>🤖 AI Summary</Text>
+                        <Text style={{ fontSize: 12, color: colors.textMuted, lineHeight: 18 }}>{r.aiSummary}</Text>
+                      </View>
+                    )}
                   </View>
-                  <View style={[s.aiBox, { backgroundColor: colors.bgPage, borderLeftColor: colors.primary }]}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: colors.primary, marginBottom: 4 }}>🤖 AI Summary</Text>
-                    <Text style={{ fontSize: 12, color: colors.textMuted, lineHeight: 18 }}>{r.summary}</Text>
-                  </View>
-                </View>
-              ))}
+                ))
+              )}
             </View>
           </Card>
         )}
@@ -193,8 +239,8 @@ export default function PatientDetailsScreen() {
             <View style={{ padding: 16 }}>
               {[
                 { date: 'Mar 14', event: 'High Fever reported',                                        type: 'symptom',  icon: '🌡️' },
-                { date: 'Mar 12', event: `Blood Test — ${patient?.condition ?? 'Unknown'} Positive`,   type: 'report',   icon: '🔬' },
-                { date: 'Mar 10', event: 'Treatment started: Paracetamol + IV Fluids',                 type: 'medicine', icon: '💊' },
+                { date: 'Mar 12', event: 'Medical Report Uploaded',                                      type: 'report',   icon: '🔬' },
+                { date: 'Mar 10', event: 'Treatment started: Medication prescribed',                       type: 'medicine', icon: '💊' },
                 { date: 'Mar 8',  event: 'Patient registered on MediVault',                            type: 'system',   icon: '✅' },
               ].map((item, i, arr) => (
                 <View key={i} style={{ flexDirection: 'row', gap: 12, paddingBottom: 16, position: 'relative' }}>
@@ -239,17 +285,17 @@ export default function PatientDetailsScreen() {
           <CardHeader title="ℹ️ Patient Info" />
           <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
             {[
-              { label: 'Blood Type', value: patient?.blood    },
-              { label: 'Phone',      value: patient?.phone    },
-              { label: 'Doctor',     value: patient?.doctor   },
-              { label: 'Last Seen',  value: patient?.lastSeen },
-            ].map((info, i) => (
-              <View key={i} style={[
+              { label: 'Blood Type', value: patient?.bloodType    },
+              { label: 'Phone',      value: patient?.phone || patient?.mobile    },
+              { label: 'Email',      value: patient?.email   },
+              { label: 'Allergies',  value: patient?.allergies?.join(', ') || 'None' },
+            ].map((info, i, arr) => (
+              <View key={info.label} style={[
                 { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10 },
-                i < 3 && { borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
+                i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
               ]}>
                 <Text style={{ fontSize: 12, color: colors.textMuted }}>{info.label}</Text>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textPrimary }}>{info.value ?? '—'}</Text>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textPrimary, textAlign: 'right', maxWidth: '60%' }}>{info.value ?? '—'}</Text>
               </View>
             ))}
           </View>

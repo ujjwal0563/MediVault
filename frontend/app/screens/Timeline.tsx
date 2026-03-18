@@ -1,13 +1,28 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import DrawerLayout from '../../components/DrawerLayout';
 import Colors from '../../constants/colors';
 import { Card, Badge, Button } from '../../components/UI';
+import { patientAPI, symptomAPI, MedRecord, Report, SymptomLog } from '../../services/api';
 
-// TODO: Replace with real timeline data from API or context
-const TIMELINE_DATA: any[] = [];
+interface TimelineEvent {
+  id: string;
+  date: string;
+  day: string;
+  type: string;
+  icon: string;
+  title: string;
+  detail: string;
+  severity?: string;
+}
+
+interface TimelineGroup {
+  day: string;
+  date: string;
+  events: TimelineEvent[];
+}
 
 const TYPE_META: Record<string, { color: string; label: string; bg: string }> = {
   symptom: { color: Colors.danger, label: 'Symptom', bg: Colors.dangerSoft },
@@ -25,15 +40,94 @@ const SEV_COLOR: Record<string, string> = {
   info: Colors.primary,
 };
 
-const TYPES = ['All', 'symptom', 'dose', 'report', 'record'];
+const TYPES = ['All', 'symptom', 'report', 'record'];
 
 export default function TimelineScreen() {
   const router = useRouter();
   const { role, userName, userInitial, colors } = useTheme();
   const [typeFilter, setTypeFilter] = useState('All');
+  const [timelineData, setTimelineData] = useState<TimelineGroup[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const filtered = TIMELINE_DATA
-    .map(g => ({ ...g, events: g.events.filter((e: any) => typeFilter === 'All' || e.type === typeFilter) }))
+  const loadTimeline = async () => {
+    try {
+      const [records, reports, symptoms] = await Promise.all([
+        patientAPI.getRecords(),
+        patientAPI.getReports(),
+        symptomAPI.getHistory(),
+      ]);
+
+      const events: TimelineEvent[] = [];
+
+      records.forEach((r: MedRecord) => {
+        events.push({
+          id: r._id,
+          date: new Date(r.date).toLocaleDateString(),
+          day: new Date(r.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+          type: 'record',
+          icon: '📋',
+          title: r.diagnosis,
+          detail: r.notes || 'Medical record created',
+        });
+      });
+
+      reports.forEach((r: Report) => {
+        events.push({
+          id: r._id,
+          date: new Date(r.createdAt).toLocaleDateString(),
+          day: new Date(r.createdAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+          type: 'report',
+          icon: '📄',
+          title: r.originalName,
+          detail: r.aiSummary || `Report uploaded: ${r.reportType}`,
+        });
+      });
+
+      symptoms.forEach((s: SymptomLog) => {
+        events.push({
+          id: s._id,
+          date: new Date(s.createdAt).toLocaleDateString(),
+          day: new Date(s.createdAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+          type: 'symptom',
+          icon: '🌡️',
+          title: s.symptoms.substring(0, 50),
+          detail: `Urgency: ${s.urgency} - ${s.advice}`,
+          severity: s.urgency,
+        });
+      });
+
+      events.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      const grouped: Record<string, TimelineGroup> = {};
+      events.forEach(e => {
+        const key = e.date;
+        if (!grouped[key]) {
+          grouped[key] = { day: e.day, date: e.date, events: [] };
+        }
+        grouped[key].events.push(e);
+      });
+
+      setTimelineData(Object.values(grouped));
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to load timeline');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTimeline();
+  }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadTimeline();
+    setRefreshing(false);
+  }, []);
+
+  const filtered = timelineData
+    .map(g => ({ ...g, events: g.events.filter(e => typeFilter === 'All' || e.type === typeFilter) }))
     .filter(g => g.events.length > 0);
 
   return (
@@ -61,7 +155,8 @@ export default function TimelineScreen() {
         })}
       </ScrollView>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />}>
 
         {filtered.length === 0 && (
           <View style={{ alignItems: 'center', padding: 48 }}>
@@ -84,7 +179,7 @@ export default function TimelineScreen() {
             {/* Events */}
             <View style={{ paddingLeft: 8 }}>
 
-              {group.events.map((event: any, ei: number) => {
+              {group.events.map((event, ei: number) => {
                 const meta = TYPE_META[event.type] || TYPE_META.system;
                 return (
                   <View key={event.id} style={{ flexDirection: 'row', gap: 12 }}>
@@ -99,7 +194,7 @@ export default function TimelineScreen() {
                     </View>
 
                     {/* Card */}
-                    <View style={[styles.eventCard, { borderLeftColor: SEV_COLOR[event.severity] || meta.color, marginBottom: ei < group.events.length - 1 ? 8 : 0 }]}>
+                    <View style={[styles.eventCard, { borderLeftColor: event.severity ? (SEV_COLOR[event.severity] || meta.color) : meta.color, marginBottom: ei < group.events.length - 1 ? 8 : 0 }]}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
                         <Text style={{ fontWeight: '700', fontSize: 14, color: Colors.gray800 }}>{event.title}</Text>
                         <View style={[styles.typeBadge, { backgroundColor: meta.bg }]}>

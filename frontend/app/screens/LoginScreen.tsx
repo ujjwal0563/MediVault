@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, KeyboardAvoidingView, Platform,
+  ScrollView, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import Colors from '../../constants/colors';
 import { Button } from '../../components/UI';
 import { useTheme } from '../../context/ThemeContext';
+import { authAPI } from '../../services/api';
 
 type Role = 'patient' | 'doctor';
 type LoginMode = 'email' | 'mobile' | 'username' | 'hospitalId';
@@ -17,10 +18,7 @@ export default function LoginScreen() {
 
   const [role, setRole] = useState<Role>('patient');
   const [loginMode, setLoginMode] = useState<LoginMode>('email');
-  const [email, setEmail] = useState('');
-  const [mobile, setMobile] = useState('');
-  const [username, setUsername] = useState('');
-  const [hospitalId, setHospitalId] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -33,17 +31,66 @@ export default function LoginScreen() {
     email: 'Email', mobile: 'Mobile', username: 'Username', hospitalId: 'Hospital ID',
   };
 
-  const handleSignIn = () => {
-    if (!password) { setError('Please enter your password.'); return; }
+  const handleSignIn = async () => {
+    if (!identifier.trim()) {
+      setError(`Please enter your ${modeLabel[loginMode].toLowerCase()}.`);
+      return;
+    }
+    if (!password) {
+      setError('Please enter your password.');
+      return;
+    }
+
     setLoading(true);
     setError('');
-    setTimeout(() => {
+
+    try {
+      const loginData: { identifier?: string; password: string; role: Role; loginMode?: string } = {
+        password,
+        role,
+      };
+
+      if (loginMode === 'email') {
+        loginData.identifier = identifier;
+        loginData.loginMode = 'email';
+      } else if (loginMode === 'mobile') {
+        loginData.identifier = identifier;
+        loginData.loginMode = 'mobile';
+      } else if (loginMode === 'username') {
+        loginData.identifier = identifier;
+        loginData.loginMode = 'username';
+      } else if (loginMode === 'hospitalId') {
+        loginData.identifier = identifier;
+        loginData.loginMode = 'hospitalId';
+      }
+
+      const result = await authAPI.login(loginData);
+      setUser(result.user.role, result.user.name || `${result.user.firstName || ''} ${result.user.lastName || ''}`.trim());
+      router.replace(result.user.role === 'doctor' ? '/screens/DoctorDashboard' : '/screens/PatientDashboard');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Login failed. Please try again.';
+      setError(message);
+      Alert.alert('Login Failed', message);
+    } finally {
       setLoading(false);
-      // ✅ Store role + name globally so notifications/profile stay correct
-      const name = role === 'doctor' ? 'Dr. Sharma' : 'Rahul Singh';
-      setUser(role, name);
-      router.replace(role === 'doctor' ? '/screens/DoctorDashboard' : '/screens/PatientDashboard');
-    }, 900);
+    }
+  };
+
+  const handleDemoAccess = async (demoRole: Role) => {
+    Alert.alert(
+      'Demo Mode',
+      'Demo access skips authentication. For full functionality, please create an account or login.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue Demo',
+          onPress: () => {
+            setUser(demoRole, demoRole === 'doctor' ? 'Dr. Demo User' : 'Demo Patient');
+            router.replace(demoRole === 'doctor' ? '/screens/DoctorDashboard' : '/screens/PatientDashboard');
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -90,25 +137,25 @@ export default function LoginScreen() {
           {loginMode === 'email' && (
             <>
               <Text style={styles.label}>Email Address</Text>
-              <TextInput style={styles.input} placeholder={role === 'doctor' ? 'doctor@hospital.com' : 'you@example.com'} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholderTextColor={Colors.gray400} />
+              <TextInput style={styles.input} placeholder={role === 'doctor' ? 'doctor@hospital.com' : 'you@example.com'} value={identifier} onChangeText={setIdentifier} keyboardType="email-address" autoCapitalize="none" placeholderTextColor={Colors.gray400} />
             </>
           )}
           {loginMode === 'mobile' && (
             <>
               <Text style={styles.label}>Mobile Number</Text>
-              <TextInput style={styles.input} placeholder="+91 98765 43210" value={mobile} onChangeText={setMobile} keyboardType="phone-pad" placeholderTextColor={Colors.gray400} />
+              <TextInput style={styles.input} placeholder="+91 98765 43210" value={identifier} onChangeText={setIdentifier} keyboardType="phone-pad" placeholderTextColor={Colors.gray400} />
             </>
           )}
           {loginMode === 'username' && (
             <>
               <Text style={styles.label}>Username</Text>
-              <TextInput style={styles.input} placeholder="your_username" value={username} onChangeText={setUsername} autoCapitalize="none" placeholderTextColor={Colors.gray400} />
+              <TextInput style={styles.input} placeholder="your_username" value={identifier} onChangeText={setIdentifier} autoCapitalize="none" placeholderTextColor={Colors.gray400} />
             </>
           )}
           {loginMode === 'hospitalId' && (
             <>
               <Text style={styles.label}>Hospital ID</Text>
-              <TextInput style={styles.input} placeholder="e.g. HOSP-2024-001" value={hospitalId} onChangeText={setHospitalId} autoCapitalize="none" placeholderTextColor={Colors.gray400} />
+              <TextInput style={styles.input} placeholder="e.g. HOSP-2024-001" value={identifier} onChangeText={setIdentifier} autoCapitalize="none" placeholderTextColor={Colors.gray400} />
             </>
           )}
         </View>
@@ -133,8 +180,8 @@ export default function LoginScreen() {
         <View style={styles.demoBox}>
           <Text style={styles.demoLabel}>QUICK DEMO ACCESS</Text>
           <View style={styles.demoRow}>
-            <Button label="Doctor View"  onPress={() => { setUser('doctor', 'Dr. Sharma'); router.replace('/screens/DoctorDashboard' as any); }} variant="outline" size="sm" style={{ flex: 1, marginRight: 8 }} />
-            <Button label="Patient View" onPress={() => { setUser('patient', 'Rahul Singh'); router.replace('/screens/PatientDashboard' as any); }} variant="outline" size="sm" style={{ flex: 1 }} />
+            <Button label="Doctor View" onPress={() => handleDemoAccess('doctor')} variant="outline" size="sm" style={{ flex: 1, marginRight: 8 }} />
+            <Button label="Patient View" onPress={() => handleDemoAccess('patient')} variant="outline" size="sm" style={{ flex: 1 }} />
           </View>
         </View>
 

@@ -1,13 +1,14 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import DrawerLayout from '../../components/DrawerLayout';
 import Svg, { Rect, Text as SvgText } from 'react-native-svg';
 import Colors from '../../constants/colors';
 import { Card, CardHeader, Badge, Button } from '../../components/UI';
+import { qrAPI } from '../../services/api';
 
-function QRCodeSVG() {
+function QRCodeSVG({ token }: { token?: string }) {
   return (
     <Svg width={180} height={180} viewBox="0 0 180 180">
       <Rect x={10} y={10} width={50} height={50} fill="none" stroke={Colors.primary} strokeWidth={6} rx={4} />
@@ -27,27 +28,53 @@ function QRCodeSVG() {
   );
 }
 
-const meds = [
-  { name: 'Paracetamol 500mg', freq: 'Twice daily', doctor: 'Dr. Kapoor' },
-  { name: 'Vitamin C 1000mg', freq: 'Once daily', doctor: 'Dr. Kapoor' },
-  { name: 'Antibiotic 250mg', freq: 'Thrice daily', doctor: 'Dr. Kapoor' },
-];
-
-const emergency = [
-  { label: 'Blood Type', value: 'O+', icon: '🩸', highlight: false },
-  { label: 'Allergies', value: 'Penicillin', icon: '⚠️', highlight: true },
-  { label: 'Condition', value: 'Dengue', icon: '🏥', highlight: true },
-  { label: 'Emergency Contact', value: 'Amit Singh (+91 98765)', icon: '📞', highlight: false },
-];
-
 export default function QRProfileScreen() {
   const router = useRouter();
   const { role, userName, userInitial, colors } = useTheme();
+  const [qrToken, setQrToken] = useState<string>('');
+  const [patientName, setPatientName] = useState<string>('');
+  const [bloodType, setBloodType] = useState<string>('');
+  const [allergies, setAllergies] = useState<string[]>([]);
+  const [emergencyContact, setEmergencyContact] = useState<{ name?: string; phone?: string } | undefined>();
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadProfile = async () => {
+    try {
+      const data = await qrAPI.getMyProfile();
+      setQrToken(data.qrToken);
+      setPatientName(data.payload.name);
+      setBloodType(data.payload.bloodType || 'Unknown');
+      setAllergies(data.payload.allergies || []);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to load QR profile');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadProfile();
+    setRefreshing(false);
+  }, []);
+
+  const emergency = [
+    { label: 'Blood Type', value: bloodType || 'Unknown', icon: '🩸', highlight: false },
+    { label: 'Allergies', value: allergies.length > 0 ? allergies.join(', ') : 'None', icon: '⚠️', highlight: allergies.length > 0 },
+    { label: 'Condition', value: 'N/A', icon: '🏥', highlight: false },
+    { label: 'Emergency Contact', value: emergencyContact ? `${emergencyContact.name} (${emergencyContact.phone || 'N/A'})` : 'Not set', icon: '📞', highlight: false },
+  ];
 
   return (
     <DrawerLayout title="Emergency QR Profile" subtitle="Your emergency health card" showBack>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />}>
 
         {/* Warning Banner */}
         <View style={styles.warningBanner}>
@@ -61,15 +88,21 @@ export default function QRProfileScreen() {
         <Card>
           <CardHeader title="🔲 Your Emergency QR Code" />
           <View style={{ padding: 20, alignItems: 'center' }}>
-            <View style={styles.qrBox}>
-              <QRCodeSVG />
-            </View>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.gray800, marginBottom: 2 }}>Rahul Singh</Text>
-            <Text style={{ fontSize: 11, color: Colors.gray400, marginBottom: 16 }}>ID: MV-2024-RS-001</Text>
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <Button label="⬇️ Download" onPress={() => Alert.alert('Download', 'QR saved to gallery.')} />
-              <Button label="🔗 Copy Link" onPress={() => Alert.alert('Copied', 'Link copied to clipboard.')} variant="outline" />
-            </View>
+            {loading ? (
+              <ActivityIndicator size="large" color={Colors.primary} />
+            ) : (
+              <>
+                <View style={styles.qrBox}>
+                  <QRCodeSVG token={qrToken} />
+                </View>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.gray800, marginBottom: 2 }}>{patientName}</Text>
+                <Text style={{ fontSize: 11, color: Colors.gray400, marginBottom: 16 }}>ID: {qrToken.substring(0, 16)}...</Text>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <Button label="⬇️ Download" onPress={() => Alert.alert('Download', 'QR saved to gallery.')} />
+                  <Button label="🔗 Copy Link" onPress={() => Alert.alert('Copied', 'Link copied to clipboard.')} variant="outline" />
+                </View>
+              </>
+            )}
           </View>
         </Card>
 
@@ -95,16 +128,10 @@ export default function QRProfileScreen() {
         {/* Current Medications */}
         <Card style={{ marginTop: 16 }}>
           <CardHeader title="💊 Current Medications" />
-          <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
-            {meds.map((m, i) => (
-              <View key={i} style={[styles.medRow, i < meds.length - 1 && { borderBottomWidth: 1, borderBottomColor: Colors.gray100 }]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontWeight: '600', fontSize: 13, color: Colors.gray800 }}>{m.name}</Text>
-                  <Text style={{ fontSize: 11, color: Colors.gray400 }}>{m.freq} · {m.doctor}</Text>
-                </View>
-                <Badge label="Active" />
-              </View>
-            ))}
+          <View style={{ paddingHorizontal: 16, paddingBottom: 16, alignItems: 'center' }}>
+            <Text style={{ fontSize: 12, color: Colors.gray500, textAlign: 'center', paddingVertical: 10 }}>
+              View medications in the Records section
+            </Text>
           </View>
         </Card>
 

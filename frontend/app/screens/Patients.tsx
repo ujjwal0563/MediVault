@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import DrawerLayout from '../../components/DrawerLayout';
 import { StatCard, Card, Badge, Button, ProgressBar, Avatar } from '../../components/UI';
-import { useEffect } from 'react';
+import { doctorAPI, Patient } from '../../services/api';
 
 const STATUS_STYLE: Record<string, { badge: 'danger' | 'warning' | 'success'; bar: string }> = {
   Critical: { badge: 'danger', bar: '#DC2626' },
@@ -18,49 +18,48 @@ export default function PatientsScreen() {
 
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('All');
-  const [patients, setPatients] = useState<any[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    const fetchPatients = async () => {
-      setLoading(true);
-      setError('');
-      try {
-        // TODO: Replace token with actual auth token from your auth flow
-        const token = '';
-        const response = await fetch('http://localhost:5000/api/v1/doctor/patients', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.message || 'Failed to fetch patients');
-        }
-        const data = await response.json();
-        setPatients(data.patients || []);
-      } catch (err: any) {
-        setError(err.message || 'Failed to fetch patients');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchPatients();
-  }, []);
-
-  const filtered = patients.filter(p => {
-    const matchSearch = (p.name || '').toLowerCase().includes(search.toLowerCase())
-      || (p.condition || '').toLowerCase().includes(search.toLowerCase())
-      || (p.doctor || '').toLowerCase().includes(search.toLowerCase());
-    return matchSearch && (filter === 'All' || p.status === filter);
-  });
-
-  const viewPatient = (p: any) => {
-    router.push({ pathname: '/screens/PatientDetails', params: { id: p.id } } as any);
+  const loadPatients = async (query?: string) => {
+    try {
+      const data = await doctorAPI.getPatients(query);
+      setPatients(data.patients || []);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch patients');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const criticalCount = patients.filter(p => p.status === 'Critical').length;
-  const monitorCount = patients.filter(p => p.status === 'Monitor').length;
-  const stableCount = patients.filter(p => p.status === 'Stable').length;
+  useEffect(() => {
+    loadPatients();
+  }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadPatients(search || undefined);
+    setRefreshing(false);
+  }, [search]);
+
+  const handleSearch = () => {
+    loadPatients(search || undefined);
+  };
+
+  const filtered = patients.filter(p => {
+    const matchSearch = (p.name || '').toLowerCase().includes(search.toLowerCase());
+    return matchSearch;
+  });
+
+  const viewPatient = (p: Patient) => {
+    router.push({ pathname: '/screens/PatientDetails', params: { id: p._id } } as any);
+  };
+
+  const criticalCount = 0;
+  const monitorCount = 0;
+  const stableCount = patients.length;
 
   return (
     <DrawerLayout title="Patients" subtitle={`${patients.length} total patients`}
@@ -71,12 +70,16 @@ export default function PatientsScreen() {
       }>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
-        style={{ backgroundColor: colors.bgPage }}>
+        style={{ backgroundColor: colors.bgPage }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />}>
 
         {loading ? (
-          <Text>Loading patients...</Text>
+          <View style={{ alignItems: 'center', padding: 40 }}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={{ fontSize: 13, color: colors.textMuted, marginTop: 10 }}>Loading patients...</Text>
+          </View>
         ) : error ? (
-          <Text style={{ color: 'red' }}>{error}</Text>
+          <Text style={{ color: colors.danger, textAlign: 'center', padding: 20 }}>{error}</Text>
         ) : (
           <>
             {/* Stats */}
@@ -130,57 +133,35 @@ export default function PatientsScreen() {
             {/* Patient Cards */}
             <View style={{ gap: 12 }}>
               {filtered.map(p => {
-                const sc = STATUS_STYLE[p.status] || STATUS_STYLE.Stable;
+                const sc = STATUS_STYLE.Stable;
+                const initials = p.name ? p.name.split(' ').map((n: string) => n[0]).join('') : '?';
                 return (
-                  <View key={p.id} style={[s.patientCard, {
+                  <View key={p._id} style={[s.patientCard, {
                     backgroundColor: colors.bgCard, borderColor: colors.border,
                   }]}>
-                    {/* Status top line */}
                     <View style={[s.statusLine, { backgroundColor: sc.bar }]} />
 
                     <View style={{ padding: 14 }}>
-                      {/* Top row */}
                       <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
                           <View style={[s.avatar, { backgroundColor: colors.primarySoft }]}>
                             <Text style={{ fontSize: 14, fontWeight: '800', color: colors.primary }}>
-                              {p.name.split(' ').map((n: string) => n[0]).join('')}
+                              {initials}
                             </Text>
                           </View>
                           <View style={{ flex: 1 }}>
                             <Text style={{ fontWeight: '800', fontSize: 15, color: colors.textPrimary }}>{p.name}</Text>
-                            <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 1 }}>Age {p.age} · {p.blood}</Text>
+                            <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 1 }}>{p.email}</Text>
                           </View>
                         </View>
-                        <Badge label={p.status} type={sc.badge} />
+                        <Badge label="Stable" type={sc.badge} />
                       </View>
 
-                      {/* Tags row */}
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-                        <Badge label={p.condition} type="primary" />
-                        <Text style={{ fontSize: 12, color: colors.textMuted }}>🔥 {p.streak}d streak</Text>
-                        <Text style={{ fontSize: 12, color: colors.textFaint }}>· {p.lastSeen}</Text>
+                        {p.bloodType && <Badge label={`Blood: ${p.bloodType}`} type="primary" />}
+                        {p.allergies && p.allergies.length > 0 && <Badge label={`${p.allergies.length} allergies`} type="warning" />}
                       </View>
 
-                      {/* Adherence bar */}
-                      <View style={{ marginBottom: 10 }}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
-                          <Text style={{ fontSize: 12, color: colors.textMuted }}>Adherence</Text>
-                          <Text style={{
-                            fontSize: 12, fontWeight: '800',
-                            color: p.adherence < 75 ? colors.danger : colors.success
-                          }}>{p.adherence}%</Text>
-                        </View>
-                        <ProgressBar value={p.adherence}
-                          color={p.adherence < 75 ? colors.danger : colors.success} height={6} />
-                      </View>
-
-                      {/* Doctor */}
-                      <Text style={{ fontSize: 11, color: colors.textFaint, marginBottom: 12 }}>
-                        👨‍⚕️ {p.doctor}
-                      </Text>
-
-                      {/* Actions */}
                       <View style={{ flexDirection: 'row', gap: 10 }}>
                         <Button label="View Details" onPress={() => viewPatient(p)} style={{ flex: 1 }} size="sm" />
                         <Button label="📱 SMS" onPress={() => { }} variant="outline" size="sm" />

@@ -1,6 +1,7 @@
 const express = require("express");
 const dotenv = require("dotenv");
 const mongoose = require("mongoose");
+const cors = require("cors");
 dotenv.config();
 
 const validateEnv = require("./config/validateEnv");
@@ -22,9 +23,14 @@ const medicineRoutes = require("./routes/medicine");
 const symptomRoutes = require("./routes/symptom");
 const notificationRoutes = require("./routes/notification");
 const qrRoutes = require("./routes/qr");
-const messageRoutes = require("./routes/message");
 
 const app = express();
+
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -33,6 +39,15 @@ app.set("view engine", "ejs");
 
 app.get("/", (req, res) => {
   res.send("MediVault server is running");
+});
+
+app.get("/api/v1/debug", (req, res) => {
+  res.json({
+    status: "ok",
+    message: "Backend is reachable from mobile app",
+    timestamp: new Date().toISOString(),
+    cors: "enabled",
+  });
 });
 
 app.get("/health", (req, res) => {
@@ -71,7 +86,6 @@ app.use("/api/v1/medicine", medicineRoutes);
 app.use("/api/v1/symptom", symptomRoutes);
 app.use("/api/v1/notifications", notificationRoutes);
 app.use("/api/v1/qr", qrRoutes);
-app.use("/api/v1/messages", messageRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
@@ -102,6 +116,7 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+const HOST = process.env.HOST || '0.0.0.0';
+app.listen(PORT, HOST, () => {
+  console.log(`Server running on http://${HOST}:${PORT}`);
 });

@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import DrawerLayout from '../../components/DrawerLayout';
 import { useTheme } from '../../context/ThemeContext';
 import { useBadges } from '../../context/BadgeContext';
 import { Badge, Button } from '../../components/UI';
+import { notificationAPI, Notification } from '../../services/api';
 
 const TAG_COLORS: Record<string, 'danger'|'warning'|'primary'|'success'|'teal'|'default'> = {
   Critical:'danger', Adherence:'warning', Report:'primary', SMS:'teal',
@@ -19,26 +20,66 @@ export default function NotificationsScreen() {
     markOneNotif, markAllNotifs, removeNotif,
   } = useBadges();
 
-  // Clear sidebar badge when screen opens
-  useEffect(() => { clearNotifs(); }, []);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [filter, setFilter] = React.useState('All');
+
+  const loadNotifications = async () => {
+    try {
+      const data = await notificationAPI.getNotifications();
+      setNotifications(data.notifications);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to load notifications');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadNotifications();
+    clearNotifs();
+  }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadNotifications();
+    setRefreshing(false);
+  }, []);
+
+  const handleMarkAsRead = async (id: string) => {
+    try {
+      await notificationAPI.markAsRead(id);
+      setNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n));
+      markOneNotif(role, id);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to mark as read');
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      await notificationAPI.markAllAsRead();
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      markAllNotifs(role);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to mark all as read');
+    }
+  };
 
   const isDoctor = role === 'doctor';
   const accent   = isDoctor ? colors.primary : colors.teal;
 
-  // ✅ Read from context — persists across navigation
-  const notifs   = isDoctor ? doctorNotifs : patientNotifs;
-  const unread   = notifs.filter(n => !n.read).length;
-
-  const [filter, setFilter] = React.useState('All');
+  const unread   = notifications.filter(n => !n.isRead).length;
 
   const filters = isDoctor
     ? ['All', 'Unread', 'Critical', 'Report']
     : ['All', 'Unread', 'Medicine', 'Message'];
 
-  const displayed = notifs.filter(n => {
+  const displayed = notifications.filter(n => {
     if (filter === 'All')    return true;
-    if (filter === 'Unread') return !n.read;
-    return n.tag === filter;
+    if (filter === 'Unread') return !n.isRead;
+    return n.type === filter;
   });
 
   return (
@@ -50,7 +91,7 @@ export default function NotificationsScreen() {
       userInitial={userInitial}
       headerRight={
         unread > 0
-          ? <Button label="Mark all" onPress={() => markAllNotifs(role)} size="sm"
+          ? <Button label="Mark all" onPress={handleMarkAllAsRead} size="sm"
               style={{ backgroundColor: 'rgba(255,255,255,0.18)' }} />
           : undefined
       }
@@ -106,63 +147,71 @@ export default function NotificationsScreen() {
 
         {/* Notification List */}
         <ScrollView contentContainerStyle={{ padding: 14, gap: 10, paddingBottom: 40 }}
-          showsVerticalScrollIndicator={false}>
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[accent]} />}>
 
-          {displayed.length === 0 && (
+          {loading ? (
+            <View style={{ alignItems: 'center', paddingTop: 60 }}>
+              <ActivityIndicator size="large" color={accent} />
+              <Text style={{ fontSize: 13, color: colors.textMuted, marginTop: 10 }}>Loading notifications...</Text>
+            </View>
+          ) : displayed.length === 0 ? (
             <View style={{ alignItems: 'center', paddingTop: 60 }}>
               <Text style={{ fontSize: 50 }}>🎉</Text>
               <Text style={{ fontSize: 18, fontWeight: '700', color: colors.textPrimary, marginTop: 12 }}>All caught up!</Text>
               <Text style={{ fontSize: 13, color: colors.textMuted, marginTop: 4 }}>No notifications here.</Text>
             </View>
-          )}
+          ) : (
+            displayed.map(n => {
+              const typeIcon = n.type === 'dose_missed' ? '💊' : n.type === 'symptom_urgent' ? '🚨' : '🔔';
+              const typeTag = n.type === 'dose_missed' ? 'Medicine' : n.type === 'symptom_urgent' ? 'Critical' : 'System';
+              return (
+                <View key={n._id} style={[s.card, {
+                  backgroundColor: n.isRead
+                    ? colors.bgCard
+                    : isDoctor ? (isDark ? '#1a2540' : '#EFF6FF') : (isDark ? '#052e2e' : '#F0FDFA'),
+                  borderColor:     n.isRead ? colors.border : accent + '40',
+                  borderLeftColor: n.isRead ? colors.border : accent,
+                  shadowOpacity:   n.isRead ? 0.04 : 0.1,
+                }]}>
+                  <View style={[s.dot, { backgroundColor: n.isRead ? 'transparent' : accent }]} />
 
-          {displayed.map(n => (
-            <View key={n.id} style={[s.card, {
-              backgroundColor: n.read
-                ? colors.bgCard
-                : isDoctor ? (isDark ? '#1a2540' : '#EFF6FF') : (isDark ? '#052e2e' : '#F0FDFA'),
-              borderColor:     n.read ? colors.border : accent + '40',
-              borderLeftColor: n.read ? colors.border : accent,
-              shadowOpacity:   n.read ? 0.04 : 0.1,
-            }]}>
-              <View style={[s.dot, { backgroundColor: n.read ? 'transparent' : accent }]} />
+                  <View style={[s.iconBox, {
+                    backgroundColor: n.isRead ? colors.bgCardHover : accent + '18',
+                    borderColor: n.isRead ? colors.border : accent + '40',
+                  }]}>
+                    <Text style={{ fontSize: 20 }}>{typeIcon}</Text>
+                  </View>
 
-              <View style={[s.iconBox, {
-                backgroundColor: n.read ? colors.bgCardHover : accent + '18',
-                borderColor: n.read ? colors.border : accent + '40',
-              }]}>
-                <Text style={{ fontSize: 20 }}>{n.icon}</Text>
-              </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' }}>
+                      <Text style={[s.notifTitle, {
+                        color: n.isRead ? colors.textMuted : colors.textPrimary,
+                        fontWeight: n.isRead ? '500' : '700',
+                      }]} numberOfLines={1}>{n.title}</Text>
+                      <Badge label={typeTag} type={TAG_COLORS[typeTag] || 'primary'} />
+                    </View>
+                    <Text style={[s.notifBody, { color: n.isRead ? colors.textFaint : colors.textMuted }]}
+                      numberOfLines={2}>{n.message}</Text>
+                    <Text style={[s.notifTime, { color: colors.textFaint }]}>🕐 {new Date(n.createdAt).toLocaleDateString()}</Text>
+                  </View>
 
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' }}>
-                  <Text style={[s.notifTitle, {
-                    color: n.read ? colors.textMuted : colors.textPrimary,
-                    fontWeight: n.read ? '500' : '700',
-                  }]} numberOfLines={1}>{n.title}</Text>
-                  <Badge label={n.tag} type={TAG_COLORS[n.tag] || 'primary'} />
+                  <View style={{ gap: 6, flexShrink: 0 }}>
+                    {!n.isRead && (
+                      <TouchableOpacity onPress={() => handleMarkAsRead(n._id)}
+                        style={[s.actionBtn, { backgroundColor: colors.successSoft, borderColor: colors.success + '40' }]}>
+                        <Text style={{ color: colors.success, fontSize: 14, fontWeight: '800' }}>✓</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity onPress={() => removeNotif(role, n._id)}
+                      style={[s.actionBtn, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+                      <Text style={{ color: colors.textFaint, fontSize: 13 }}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <Text style={[s.notifBody, { color: n.read ? colors.textFaint : colors.textMuted }]}
-                  numberOfLines={2}>{n.body}</Text>
-                <Text style={[s.notifTime, { color: colors.textFaint }]}>🕐 {n.time}</Text>
-              </View>
-
-              <View style={{ gap: 6, flexShrink: 0 }}>
-                {!n.read && (
-                  // ✅ markOneNotif persists globally
-                  <TouchableOpacity onPress={() => markOneNotif(role, n.id)}
-                    style={[s.actionBtn, { backgroundColor: colors.successSoft, borderColor: colors.success + '40' }]}>
-                    <Text style={{ color: colors.success, fontSize: 14, fontWeight: '800' }}>✓</Text>
-                  </TouchableOpacity>
-                )}
-                {/* ✅ removeNotif persists globally */}
-                <TouchableOpacity onPress={() => removeNotif(role, n.id)}
-                  style={[s.actionBtn, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-                  <Text style={{ color: colors.textFaint, fontSize: 13 }}>✕</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
+              );
+            })
+          )}
         </ScrollView>
       </View>
     </DrawerLayout>

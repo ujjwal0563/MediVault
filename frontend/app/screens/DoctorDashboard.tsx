@@ -1,53 +1,60 @@
-import React, { useRef } from 'react';
-import { ScrollView, View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
-import { useRouter } from 'expo-router';
-import Svg, { Polyline } from 'react-native-svg';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
+import { ScrollView, View, Text, TouchableOpacity, StyleSheet, Animated, RefreshControl } from 'react-native';
+import { useRouter, Href } from 'expo-router';
 import DrawerLayout from '../../components/DrawerLayout';
 import { StatCard, Card, CardHeader, Badge, Button, ProgressBar, Avatar } from '../../components/UI';
 import { useTheme } from '../../context/ThemeContext';
-// TODO: Replace with real patients and alerts from API or context
+import { doctorAPI } from '../../services/api';
 
-const weekBars: number[] = [];
-const weekDays: string[] = [];
-
-function MiniTrend({ data, color }: { data: number[]; color: string }) {
-  const max = Math.max(...data);
-  return (
-    <Svg width={60} height={28}>
-      <Polyline
-        points={data.map((v, i) => `${i * 10},${28 - (v / max) * 24}`).join(' ')}
-        fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-      />
-    </Svg>
-  );
+interface Patient {
+  _id: string;
+  name: string;
+  email: string;
+  mobile?: string;
+  phone?: string;
+  bloodType?: string;
+  allergies?: string[];
+  emergencyContact?: { name?: string; phone?: string };
+  assignedDoctorId?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
-// Example AlertCard placeholder
-function AlertCard({ alert }: { alert: any }) {
-  const { colors } = useTheme();
-  return (
-    <View style={{ padding: 12, backgroundColor: colors.bgCard, borderRadius: 8, marginBottom: 8 }}>
-      <Text style={{ fontWeight: '700', color: colors.textPrimary }}>{alert?.patient || 'Unknown'}</Text>
-      <Text style={{ color: colors.textMuted }}>{alert?.issue || 'No issue'}</Text>
-    </View>
-  );
+interface SymptomLog {
+  _id: string;
+  patientId: { name: string } | string;
+  symptoms: string;
+  urgency: 'low' | 'medium' | 'high';
+  createdAt: string;
 }
-// TODO: Fetch patients and alerts from API or context
-const doctorAlerts: any[] = [];
-const allPatients: any[] = [];
 
-// ── Fix: extract QuickAction item into its own component so useRef is legal ──
+interface Report {
+  _id: string;
+  patientId: { name: string } | string;
+  reportType: string;
+  createdAt: string;
+}
+
+interface DashboardSummary {
+  assignedPatients: number;
+  highUrgencyPatients: number;
+  mediumUrgencyPatients: number;
+  missedDosesLast24h: number;
+  unreadNotifications: number;
+  recentRecordsCount: number;
+}
+
 function QuickActionItem({ icon, label, route, bg, fg }: {
-  icon: string; label: string; route: string; bg: string; fg: string;
+  icon: string; label: string; route: Href; bg: string; fg: string;
 }) {
   const router = useRouter();
-  const scale  = useRef(new Animated.Value(1)).current;
+  const scale = useRef(new Animated.Value(1)).current;
   return (
     <Animated.View style={[s.qaItem, { transform: [{ scale }] }]}>
       <TouchableOpacity
         onPressIn={() => Animated.spring(scale, { toValue: 0.92, useNativeDriver: true, tension: 200 }).start()}
         onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 200 }).start()}
-        onPress={() => router.push(route as any)}
+        onPress={() => router.push(route)}
         style={[s.qaBtn, { backgroundColor: bg, borderColor: fg + '30' }]}
         activeOpacity={1}>
         <Text style={{ fontSize: 26 }}>{icon}</Text>
@@ -57,132 +64,233 @@ function QuickActionItem({ icon, label, route, bg, fg }: {
   );
 }
 
-// ── Fix: extract PatientRow into its own component so useRef is legal ──
-function PatientRow({ p }: { p: typeof allPatients[0] }) {
-  const router = useRouter();
+function PatientRow({ patient, onPress }: { patient: Patient; onPress: () => void }) {
   const { colors } = useTheme();
   const scale = useRef(new Animated.Value(1)).current;
+
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  };
+
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
       <TouchableOpacity
         onPressIn={() => Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, tension: 200 }).start()}
         onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 200 }).start()}
-        onPress={() => router.push({ pathname: '/screens/PatientDetails', params: { id: p.id } } as any)}
+        onPress={onPress}
         style={[s.patientRow, { backgroundColor: colors.bgCardHover, borderColor: colors.border }]}
         activeOpacity={1}>
-        <Avatar initials={p.name.split(' ').map((n: any[]) => n[0]).join('')} size={40} />
+        <Avatar initials={getInitials(patient.name)} size={40} />
         <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={{ fontWeight: '700', fontSize: 14, color: colors.textPrimary }}>{p.name}</Text>
+          <Text style={{ fontWeight: '700', fontSize: 14, color: colors.textPrimary }}>{patient.name}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
-            <Badge label={p.condition} />
-            <Text style={{ fontSize: 11, color: colors.textFaint }}>🔥 {p.streak}d</Text>
+            {patient.bloodType && <Badge label={patient.bloodType} type="primary" />}
+            <Text style={{ fontSize: 11, color: colors.textFaint }}>{patient.email}</Text>
           </View>
         </View>
         <View style={{ alignItems: 'flex-end', gap: 4 }}>
-          <Text style={{ fontSize: 13, fontWeight: '800', color: p.adherence < 75 ? colors.danger : colors.success }}>{p.adherence}%</Text>
-          <ProgressBar value={p.adherence} color={p.adherence < 75 ? colors.danger : colors.success} style={{ width: 56, height: 5 }} />
+          <Text style={{ fontSize: 13, fontWeight: '800', color: colors.primary }}>→</Text>
         </View>
       </TouchableOpacity>
     </Animated.View>
   );
 }
 
+function AlertRow({ symptom }: { symptom: SymptomLog }) {
+  const { colors } = useTheme();
+  const patientName = typeof symptom.patientId === 'object' ? symptom.patientId?.name || 'Unknown' : 'Unknown';
+
+  const getUrgencyColor = (urgency: string) => {
+    switch (urgency) {
+      case 'high': return colors.danger;
+      case 'medium': return colors.warning;
+      default: return colors.success;
+    }
+  };
+
+  const getUrgencyBg = (urgency: string) => {
+    switch (urgency) {
+      case 'high': return colors.dangerSoft;
+      case 'medium': return colors.warningSoft;
+      default: return colors.successSoft;
+    }
+  };
+
+  const formatTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 60) return `${diffMins} min ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  };
+
+  return (
+    <View style={[s.alertCard, { borderLeftColor: getUrgencyColor(symptom.urgency), backgroundColor: getUrgencyBg(symptom.urgency) }]}>
+      <View style={[s.alertDot, { backgroundColor: getUrgencyColor(symptom.urgency) }]} />
+      <View style={{ flex: 1 }}>
+        <Text style={[s.alertName, { color: colors.textPrimary }]}>{patientName}</Text>
+        <Text style={[s.alertIssue, { color: colors.textMuted }]} numberOfLines={1}>
+          {symptom.symptoms}
+        </Text>
+      </View>
+      <View style={{ alignItems: 'flex-end' }}>
+        <Badge label={symptom.urgency.toUpperCase()} type={symptom.urgency === 'high' ? 'danger' : symptom.urgency === 'medium' ? 'warning' : 'success'} />
+        <Text style={{ fontSize: 10, color: colors.textFaint, marginTop: 4 }}>
+          {formatTime(symptom.createdAt)}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export default function DoctorDashboard() {
   const router = useRouter();
-  const { colors } = useTheme();
+  const { colors, userName } = useTheme();
 
-  const quickActions = [
-    { icon: '👥', label: 'Patients',  route: '/screens/Patients',      bg: colors.primarySoft,  fg: colors.primary  },
-    { icon: '🚨', label: 'Alerts',    route: '/screens/Alerts',        bg: colors.dangerSoft,   fg: colors.danger   },
-    { icon: '💬', label: 'Messages',  route: '/screens/Messages',      bg: colors.tealSoft,     fg: colors.teal     },
-    { icon: '🔔', label: 'Notifs',    route: '/screens/Notifications', bg: colors.warningSoft,  fg: colors.warning  },
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [recentSymptoms, setRecentSymptoms] = useState<SymptomLog[]>([]);
+  const [recentReports, setRecentReports] = useState<Report[]>([]);
+
+  const fetchDashboard = useCallback(async (isRefresh = false) => {
+    try {
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
+
+      const data = await doctorAPI.getDashboard();
+
+      setDashboard({
+        assignedPatients: data.summary.assignedPatients,
+        highUrgencyPatients: data.summary.highUrgencyPatients,
+        mediumUrgencyPatients: data.summary.mediumUrgencyPatients,
+        missedDosesLast24h: data.summary.missedDosesLast24h,
+        unreadNotifications: data.summary.unreadNotifications,
+        recentRecordsCount: data.summary.recentRecordsCount,
+      });
+
+      setPatients(data.patients);
+      setRecentSymptoms(data.recentSymptoms);
+      setRecentReports(data.recentReports);
+    } catch (error) {
+      console.error('Failed to fetch dashboard:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDashboard();
+  }, [fetchDashboard]);
+
+  const onRefresh = useCallback(() => {
+    fetchDashboard(true);
+  }, [fetchDashboard]);
+
+  const getDateString = () => {
+    const now = new Date();
+    return now.toLocaleDateString('en-US', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+  };
+
+  const quickActions: Array<{ icon: string; label: string; route: Href; bg: string; fg: string }> = [
+    { icon: '👥', label: 'Patients', route: '/screens/Patients', bg: colors.primarySoft, fg: colors.primary },
+    { icon: '🚨', label: 'Alerts', route: '/screens/Alerts', bg: colors.dangerSoft, fg: colors.danger },
+    { icon: '💬', label: 'Messages', route: '/screens/Messages', bg: colors.tealSoft, fg: colors.teal },
+    { icon: '🔔', label: 'Notifications', route: '/screens/Notifications', bg: colors.warningSoft, fg: colors.warning },
   ];
 
   return (
     <DrawerLayout
       title="Doctor Dashboard"
-      subtitle="Monday, 14 March 2026"
+      subtitle={getDateString()}
       role="doctor"
-      userName="Dr. Sharma"
-      userInitial="DS"
-      headerRight={
-        <Button
-          label="+ Add"
-          onPress={() => router.push('/screens/PatientDetails' as any)}
-          size="sm"
-          style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
-        />
-      }>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
-        showsVerticalScrollIndicator={false} style={{ backgroundColor: colors.bgPage }}>
-
-        {/* ── Stats ── */}
+      userName={userName || 'Dr. Doctor'}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        showsVerticalScrollIndicator={false}
+        style={{ backgroundColor: colors.bgPage }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
+        {/* Stats */}
         <View style={s.statsGrid}>
-          <View style={s.statHalf}><StatCard icon="👥" value={allPatients.length} label="Total Patients" /></View>
-          <View style={s.statHalf}><StatCard icon="🚨" value={doctorAlerts.filter(a => a.severity === 'critical').length} label="Critical Alerts" iconBg={colors.dangerSoft}  valueColor={colors.danger}  /></View>
-          <View style={s.statHalf}><StatCard icon="📊" value="92%" label="Avg Adherence"   iconBg={colors.successSoft} valueColor={colors.success} /></View>
-          <View style={s.statHalf}><StatCard icon="📋" value="5"   label="Pending Reports" iconBg={colors.warningSoft} valueColor={colors.warning} /></View>
+          <View style={s.statHalf}>
+            <StatCard icon="👥" value={String(dashboard?.assignedPatients ?? 0)} label="Total Patients" />
+          </View>
+          <View style={s.statHalf}>
+            <StatCard icon="🚨" value={String(dashboard?.highUrgencyPatients ?? 0)} label="Critical Alerts" iconBg={colors.dangerSoft} valueColor={colors.danger} />
+          </View>
+          <View style={s.statHalf}>
+            <StatCard icon="⚠️" value={String(dashboard?.mediumUrgencyPatients ?? 0)} label="Moderate Alerts" iconBg={colors.warningSoft} valueColor={colors.warning} />
+          </View>
+          <View style={s.statHalf}>
+            <StatCard icon="💊" value={String(dashboard?.missedDosesLast24h ?? 0)} label="Missed (24h)" iconBg={colors.accentSoft} valueColor={colors.accent} />
+          </View>
         </View>
 
-        {/* ── Recent Alerts ── */}
+        {/* Recent Alerts */}
         <Card>
-          <CardHeader title="🚨 Recent Alerts" right={
-            <Button label="View All" onPress={() => router.push('/screens/Alerts' as any)} variant="outline" size="sm" />
+          <CardHeader title="🚨 Recent Patient Alerts" right={
+            <Button label="View All" onPress={() => router.push('/screens/Alerts')} variant="outline" size="sm" />
           }/>
           <View style={{ padding: 12, gap: 8 }}>
-            {doctorAlerts.map(alert => <AlertCard key={alert.id} alert={alert} />)}
+            {loading ? (
+              <Text style={{ color: colors.textMuted, textAlign: 'center', paddingVertical: 20 }}>Loading...</Text>
+            ) : recentSymptoms.length === 0 ? (
+              <Text style={{ color: colors.textMuted, textAlign: 'center', paddingVertical: 20 }}>
+                No recent alerts
+              </Text>
+            ) : (
+              recentSymptoms.slice(0, 5).map((symptom) => (
+                <AlertRow key={symptom._id} symptom={symptom} />
+              ))
+            )}
           </View>
         </Card>
 
-        {/* ── Health Overview chart ── */}
-        <Card>
-          <CardHeader title="📈 Patient Health Overview" />
-          <View style={{ padding: 16 }}>
-            <View style={{ flexDirection: 'row', gap: 20, marginBottom: 16 }}>
-              {[
-                { val: '87%', label: 'Overall Adherence', color: colors.primary },
-                { val: '+12%', label: 'vs Last Week',      color: colors.success },
-              ].map(item => (
-                <View key={item.label} style={[s.metricBox, { backgroundColor: colors.bgPage, borderColor: colors.border }]}>
-                  <Text style={{ fontSize: 24, fontWeight: '900', color: item.color }}>{item.val}</Text>
-                  <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>{item.label}</Text>
-                </View>
-              ))}
-            </View>
-            <View style={s.barChart}>
-              {weekBars.map((v, i) => (
-                <View key={i} style={{ flex: 1, alignItems: 'center', gap: 4 }}>
-                  <View style={[s.bar, {
-                    height: v * 0.52,
-                    backgroundColor: i === 6 ? colors.primary : colors.primarySoft,
-                    borderTopLeftRadius: 4, borderTopRightRadius: 4,
-                  }]} />
-                  <Text style={{ fontSize: 9, color: colors.textFaint }}>{weekDays[i].slice(0, 2)}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        </Card>
-
-        {/* ── Quick Actions ── */}
+        {/* Quick Actions */}
         <View style={s.qaGrid}>
           {quickActions.map(a => (
-            <QuickActionItem key={a.route} {...a} />
+            <QuickActionItem key={String(a.route)} {...a} />
           ))}
         </View>
 
-        {/* ── Patients Overview ── */}
+        {/* Patients Overview */}
         <Card>
           <CardHeader title="👥 Patients Overview" right={
-            <Button label="View All" onPress={() => router.push('/screens/Patients' as any)} variant="outline" size="sm" />
+            <Button label="View All" onPress={() => router.push('/screens/Patients')} variant="outline" size="sm" />
           }/>
           <View style={{ padding: 16, gap: 14 }}>
-            {allPatients.slice(0, 4).map(p => (
-              <PatientRow key={p.id} p={p} />
-            ))}
+            {loading ? (
+              <Text style={{ color: colors.textMuted, textAlign: 'center', paddingVertical: 20 }}>Loading...</Text>
+            ) : patients.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                <Text style={{ fontSize: 40, marginBottom: 8 }}>👥</Text>
+                <Text style={{ color: colors.textMuted }}>No patients assigned yet</Text>
+                <Text style={{ color: colors.textFaint, fontSize: 12, marginTop: 4 }}>
+                  Patients will appear here when assigned
+                </Text>
+              </View>
+            ) : (
+              patients.slice(0, 5).map((patient) => (
+                <PatientRow
+                  key={patient._id}
+                  patient={patient}
+                  onPress={() => router.push({ pathname: '/screens/PatientDetails', params: { id: patient._id } })}
+                />
+              ))
+            )}
           </View>
         </Card>
-
       </ScrollView>
     </DrawerLayout>
   );

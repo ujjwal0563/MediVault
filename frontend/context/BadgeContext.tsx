@@ -1,194 +1,247 @@
-/**
- * BadgeContext — Single source of truth for all persistent app state
- *
- * Owns:
- *  - Sidebar badge counts (notif, message, alert)
- *  - Alerts list          → persists across navigation
- *  - Notifications lists  → persists across navigation
- *  - Messages/threads     → persists across navigation
- *  - Doctor settings      → persists across navigation
- *  - Patient settings     → persists across navigation
- */
-import React, { createContext, useContext, useState, useCallback } from 'react';
-import { doctorAlerts } from '../data/mockData';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { notificationAPI, Notification } from '../services/api';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-export type AlertItem = typeof doctorAlerts[0];
+const TOKEN_KEY = '@MediVault:authToken';
+
+export type AlertItem = {
+  id: string;
+  severity: 'critical' | 'warning';
+  patient: string;
+  initials: string;
+  issue: string;
+  detail: string;
+  time: string;
+  phone: string;
+  doctor: string;
+  responded: boolean;
+};
 
 export type NotifItem = {
-  id: number; icon: string; title: string; body: string;
-  time: string; read: boolean; tag: string;
+  id: string;
+  icon: string;
+  title: string;
+  body: string;
+  time: string;
+  read: boolean;
+  tag: string;
+  type: string;
 };
 
 export type Message = {
-  id: number; from: 'patient' | 'doctor';
-  text: string; time: string; read: boolean;
+  id: number;
+  from: 'patient' | 'doctor';
+  text: string;
+  time: string;
+  read: boolean;
 };
 
 export type DoctorSettings = {
   criticalPatientAlerts: boolean;
-  missedDoseAlerts:      boolean;
-  newReportUploads:      boolean;
-  smsDeliveryConfirm:    boolean;
-  weeklyPatientSummary:  boolean;
-  lowAdherenceWarning:   boolean;
+  missedDoseAlerts: boolean;
+  newReportUploads: boolean;
+  smsDeliveryConfirm: boolean;
+  weeklyPatientSummary: boolean;
+  lowAdherenceWarning: boolean;
 };
 
 export type PatientSettings = {
-  medicationReminders:   boolean;
-  missedDoseAlerts:      boolean;
-  doctorMessages:        boolean;
-  aiReportReady:         boolean;
+  medicationReminders: boolean;
+  missedDoseAlerts: boolean;
+  doctorMessages: boolean;
+  aiReportReady: boolean;
   weeklyAdherenceReport: boolean;
-  streakMilestones:      boolean;
-};
-
-// ─── Initial data ─────────────────────────────────────────────────────────────
-const INIT_DOCTOR_NOTIFS: NotifItem[] = [
-  { id:1, icon:'🚨', title:'Critical: Rahul Singh',      body:'High fever 104°F — immediate attention required.',          time:'2 min ago',  read:false, tag:'Critical'  },
-  { id:2, icon:'⚠️', title:'Missed Doses: Vikram Patel', body:'3 consecutive Antibiotic doses missed. Caregiver notified.', time:'18 min ago', read:false, tag:'Adherence' },
-  { id:3, icon:'📋', title:'New Report: Anita Rao',      body:'Blood Test uploaded. AI summary ready for review.',          time:'1 hr ago',   read:false, tag:'Report'    },
-  { id:4, icon:'📱', title:'SMS Delivered',              body:'Your SMS to Rahul Singh was delivered via Twilio.',           time:'2 hrs ago',  read:true,  tag:'SMS'       },
-  { id:5, icon:'🤖', title:'AI Summary Ready',           body:'Chest X-Ray analysed for Priya Sharma. No abnormalities.',   time:'3 hrs ago',  read:true,  tag:'AI'        },
-  { id:6, icon:'💊', title:'Prescription Updated',       body:"Vitamin D3 added to Rahul Singh's prescription.",            time:'5 hrs ago',  read:true,  tag:'Medicine'  },
-];
-
-const INIT_PATIENT_NOTIFS: NotifItem[] = [
-  { id:1, icon:'💊', title:'Take Paracetamol 500mg',    body:'Your 8:00 AM dose is due. Tap to mark as taken.',            time:'Just now',   read:false, tag:'Medicine' },
-  { id:2, icon:'🤖', title:'AI Report Summary Ready',   body:'Your Blood Test has been analysed. View summary.',           time:'10 min ago', read:false, tag:'AI'       },
-  { id:3, icon:'💬', title:'Dr. Meera Kapoor',          body:'Take rest and keep drinking fluids. Check tomorrow.',         time:'1 hr ago',   read:false, tag:'Message'  },
-  { id:4, icon:'🔥', title:'7-Day Streak! 🎉',          body:'Amazing! 7 days of perfect medication adherence!',           time:'3 hrs ago',  read:true,  tag:'Streak'   },
-  { id:5, icon:'📋', title:'New Record Added',          body:'Dr. Kapoor added an OPD visit to your health timeline.',     time:'Yesterday',  read:true,  tag:'Record'   },
-  { id:6, icon:'🔲', title:'QR Profile Updated',        body:'Emergency QR regenerated with updated medication details.',   time:'Yesterday',  read:true,  tag:'System'   },
-];
-
-const INIT_MESSAGES: Record<number, Message[]> = {
-  1: [
-    { id:1, from:'patient', text:'Hello Doctor, I have been having high fever since yesterday morning.', time:'10:02 AM', read:true  },
-    { id:2, from:'doctor',  text:'Hello Rahul, I can see your symptoms. How high is the temperature?',  time:'10:05 AM', read:true  },
-    { id:3, from:'patient', text:'It is 104°F. I also have severe headache and body pain.',              time:'10:07 AM', read:true  },
-    { id:4, from:'doctor',  text:'Please take Paracetamol 500mg immediately and drink plenty of fluids.',time:'10:09 AM', read:true  },
-    { id:5, from:'patient', text:'Doctor, my fever is still high.',                                      time:'10:45 AM', read:false },
-  ],
-  4: [
-    { id:1, from:'patient', text:'Blood pressure is 130/85 today.', time:'Yesterday', read:false },
-  ],
+  streakMilestones: boolean;
 };
 
 const INIT_DOCTOR_SETTINGS: DoctorSettings = {
   criticalPatientAlerts: true,
-  missedDoseAlerts:      true,
-  newReportUploads:      true,
-  smsDeliveryConfirm:    false,
-  weeklyPatientSummary:  true,
-  lowAdherenceWarning:   true,
+  missedDoseAlerts: true,
+  newReportUploads: true,
+  smsDeliveryConfirm: false,
+  weeklyPatientSummary: true,
+  lowAdherenceWarning: true,
 };
 
 const INIT_PATIENT_SETTINGS: PatientSettings = {
-  medicationReminders:   true,
-  missedDoseAlerts:      true,
-  doctorMessages:        true,
-  aiReportReady:         true,
+  medicationReminders: true,
+  missedDoseAlerts: true,
+  doctorMessages: true,
+  aiReportReady: true,
   weeklyAdherenceReport: false,
-  streakMilestones:      true,
+  streakMilestones: true,
 };
 
-// ─── Context interface ────────────────────────────────────────────────────────
+const getNotifIcon = (type: string): string => {
+  switch (type) {
+    case 'dose_missed': return '💊';
+    case 'symptom_urgent': return '🔥';
+    case 'system': return '🔔';
+    default: return '📋';
+  }
+};
+
+const getNotifTag = (type: string): string => {
+  switch (type) {
+    case 'dose_missed': return 'Medicine';
+    case 'symptom_urgent': return 'Alert';
+    case 'system': return 'System';
+    default: return 'Notification';
+  }
+};
+
+const formatTime = (dateStr: string): string => {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} min ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours} hr ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
 interface BadgeContextValue {
-  // Badge counts
-  notifCount:    number;
-  messageCount:  number;
-  alertCount:    number;
-  clearNotifs:   () => void;
+  notifCount: number;
+  messageCount: number;
+  alertCount: number;
+  clearNotifs: () => void;
   clearMessages: () => void;
-  clearAlerts:   () => void;
+  clearAlerts: () => void;
 
-  // Alerts
-  alerts:        AlertItem[];
-  respondAlert:  (id: number) => void;
-  dismissAlert:  (id: number) => void;
-
-  // Notifications
-  doctorNotifs:  NotifItem[];
+  doctorNotifs: NotifItem[];
   patientNotifs: NotifItem[];
-  markOneNotif:  (role: 'doctor' | 'patient', id: number) => void;
+  markOneNotif: (role: 'doctor' | 'patient', id: string) => void;
   markAllNotifs: (role: 'doctor' | 'patient') => void;
-  removeNotif:   (role: 'doctor' | 'patient', id: number) => void;
+  removeNotif: (role: 'doctor' | 'patient', id: string) => void;
+  refreshNotifications: () => Promise<void>;
 
-  // Messages
-  messages:      Record<number, Message[]>;
-  openConv:      (id: number) => void;
-  sendMessage:   (convId: number, text: string) => void;
+  messages: Record<number, Message[]>;
+  openConv: (id: number) => void;
+  sendMessage: (convId: number, text: string) => void;
 
-  // Settings — persists across navigation, shared app-wide
-  doctorSettings:    DoctorSettings;
-  patientSettings:   PatientSettings;
-  toggleDoctorSetting:  (key: keyof DoctorSettings)  => void;
+  doctorSettings: DoctorSettings;
+  patientSettings: PatientSettings;
+  toggleDoctorSetting: (key: keyof DoctorSettings) => void;
   togglePatientSetting: (key: keyof PatientSettings) => void;
+
+  isLoading: boolean;
 }
 
 const BadgeContext = createContext<BadgeContextValue>({
-  notifCount: 0, messageCount: 0, alertCount: 0,
-  clearNotifs: () => {}, clearMessages: () => {}, clearAlerts: () => {},
-  alerts: [], respondAlert: () => {}, dismissAlert: () => {},
-  doctorNotifs: [], patientNotifs: [],
-  markOneNotif: () => {}, markAllNotifs: () => {}, removeNotif: () => {},
-  messages: {}, openConv: () => {}, sendMessage: () => {},
+  notifCount: 0,
+  messageCount: 0,
+  alertCount: 0,
+  clearNotifs: () => {},
+  clearMessages: () => {},
+  clearAlerts: () => {},
+  doctorNotifs: [],
+  patientNotifs: [],
+  markOneNotif: () => {},
+  markAllNotifs: () => {},
+  removeNotif: () => {},
+  refreshNotifications: async () => {},
+  messages: {},
+  openConv: () => {},
+  sendMessage: () => {},
   doctorSettings: INIT_DOCTOR_SETTINGS,
   patientSettings: INIT_PATIENT_SETTINGS,
   toggleDoctorSetting: () => {},
   togglePatientSetting: () => {},
+  isLoading: true,
 });
 
-// ─── Provider ─────────────────────────────────────────────────────────────────
 export function BadgeProvider({ children }: { children: React.ReactNode }) {
+  const [notifCount, setNotifCount] = useState(0);
+  const [messageCount, setMessageCount] = useState(0);
+  const [alertCount, setAlertCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Badge counts
-  const [notifCount,   setNotifCount]   = useState(3);
-  const [messageCount, setMessageCount] = useState(3);
-  const [alertCount,   setAlertCount]   = useState(2);
+  const [doctorNotifs, setDoctorNotifs] = useState<NotifItem[]>([]);
+  const [patientNotifs, setPatientNotifs] = useState<NotifItem[]>([]);
 
-  const clearNotifs   = useCallback(() => setNotifCount(0),   []);
+  const [messages, setMessages] = useState<Record<number, Message[]>>({});
+
+  const [doctorSettings, setDoctorSettings] = useState<DoctorSettings>(INIT_DOCTOR_SETTINGS);
+  const [patientSettings, setPatientSettings] = useState<PatientSettings>(INIT_PATIENT_SETTINGS);
+
+  const clearNotifs = useCallback(() => setNotifCount(0), []);
   const clearMessages = useCallback(() => setMessageCount(0), []);
-  const clearAlerts   = useCallback(() => setAlertCount(0),   []);
+  const clearAlerts = useCallback(() => setAlertCount(0), []);
 
-  // Alerts
-  const [alerts, setAlerts] = useState<AlertItem[]>(doctorAlerts);
+  const markOneNotif = useCallback(async (role: 'doctor' | 'patient', id: string) => {
+    try {
+      await notificationAPI.markAsRead(id);
+    } catch (error) {
+      console.error('Failed to mark notification as read:', error);
+    }
 
-  const respondAlert = useCallback((id: number) => {
-    setAlerts(prev => prev.map(a => a.id === id ? { ...a, responded: true } : a));
-    setAlertCount(prev => Math.max(0, prev - 1));
+    const set = role === 'doctor' ? setDoctorNotifs : setPatientNotifs;
+    set(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    setNotifCount(prev => Math.max(0, prev - 1));
   }, []);
 
-  const dismissAlert = useCallback((id: number) => {
-    setAlerts(prev => {
-      const target = prev.find(a => a.id === id);
-      if (target && !target.responded) setAlertCount(c => Math.max(0, c - 1));
-      return prev.filter(a => a.id !== id);
+  const markAllNotifs = useCallback(async (role: 'doctor' | 'patient') => {
+    try {
+      await notificationAPI.markAllAsRead();
+    } catch (error) {
+      console.error('Failed to mark all notifications as read:', error);
+    }
+
+    const set = role === 'doctor' ? setDoctorNotifs : setPatientNotifs;
+    set(prev => prev.map(n => ({ ...n, read: true })));
+    setNotifCount(0);
+  }, []);
+
+  const removeNotif = useCallback((role: 'doctor' | 'patient', id: string) => {
+    const set = role === 'doctor' ? setDoctorNotifs : setPatientNotifs;
+    set(prev => {
+      const removed = prev.find(n => n.id === id);
+      if (removed && !removed.read) {
+        setNotifCount(c => Math.max(0, c - 1));
+      }
+      return prev.filter(n => n.id !== id);
     });
   }, []);
 
-  // Notifications
-  const [doctorNotifs,  setDoctorNotifs]  = useState<NotifItem[]>(INIT_DOCTOR_NOTIFS);
-  const [patientNotifs, setPatientNotifs] = useState<NotifItem[]>(INIT_PATIENT_NOTIFS);
+  const refreshNotifications = useCallback(async () => {
+    try {
+      const token = await AsyncStorage.getItem(TOKEN_KEY);
+      if (!token) {
+        setIsLoading(false);
+        return;
+      }
+      
+      const response = await notificationAPI.getNotifications({ limit: 50 });
+      const notifications = response.notifications;
 
-  const markOneNotif = useCallback((role: 'doctor' | 'patient', id: number) => {
-    const set = role === 'doctor' ? setDoctorNotifs : setPatientNotifs;
-    set(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+      const mappedNotifs: NotifItem[] = notifications.map((n: Notification) => ({
+        id: n._id,
+        icon: getNotifIcon(n.type),
+        title: n.title,
+        body: n.message,
+        time: formatTime(n.createdAt),
+        read: n.isRead,
+        tag: getNotifTag(n.type),
+        type: n.type,
+      }));
+
+      setPatientNotifs(mappedNotifs);
+      setDoctorNotifs(mappedNotifs);
+
+      const unreadCount = notifications.filter((n: Notification) => !n.isRead).length;
+      setNotifCount(unreadCount);
+    } catch (error) {
+      console.error('Failed to fetch notifications:', error);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
-
-  const markAllNotifs = useCallback((role: 'doctor' | 'patient') => {
-    const set = role === 'doctor' ? setDoctorNotifs : setPatientNotifs;
-    set(prev => prev.map(n => ({ ...n, read: true })));
-  }, []);
-
-  const removeNotif = useCallback((role: 'doctor' | 'patient', id: number) => {
-    const set = role === 'doctor' ? setDoctorNotifs : setPatientNotifs;
-    set(prev => prev.filter(n => n.id !== id));
-  }, []);
-
-  // Messages
-  const [messages, setMessages] = useState<Record<number, Message[]>>(INIT_MESSAGES);
 
   const openConv = useCallback((id: number) => {
     setMessages(prev => ({
@@ -199,7 +252,9 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
 
   const sendMessage = useCallback((convId: number, text: string) => {
     const newMsg: Message = {
-      id: Date.now(), from: 'doctor', text: text.trim(),
+      id: Date.now(),
+      from: 'doctor',
+      text: text.trim(),
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       read: true,
     };
@@ -209,30 +264,52 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
-  // Settings
-  const [doctorSettings,  setDoctorSettings]  = useState<DoctorSettings>(INIT_DOCTOR_SETTINGS);
-  const [patientSettings, setPatientSettings] = useState<PatientSettings>(INIT_PATIENT_SETTINGS);
-
-  // Toggle a single doctor setting key — persists globally
   const toggleDoctorSetting = useCallback((key: keyof DoctorSettings) => {
     setDoctorSettings(prev => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
-  // Toggle a single patient setting key — persists globally
   const togglePatientSetting = useCallback((key: keyof PatientSettings) => {
     setPatientSettings(prev => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
+  useEffect(() => {
+    const checkAndFetch = async () => {
+      try {
+        const token = await AsyncStorage.getItem(TOKEN_KEY);
+        if (token) {
+          await refreshNotifications();
+        } else {
+          setIsLoading(false);
+        }
+      } catch {
+        setIsLoading(false);
+      }
+    };
+    checkAndFetch();
+  }, [refreshNotifications]);
+
   return (
     <BadgeContext.Provider value={{
-      notifCount, messageCount, alertCount,
-      clearNotifs, clearMessages, clearAlerts,
-      alerts, respondAlert, dismissAlert,
-      doctorNotifs, patientNotifs,
-      markOneNotif, markAllNotifs, removeNotif,
-      messages, openConv, sendMessage,
-      doctorSettings, patientSettings,
-      toggleDoctorSetting, togglePatientSetting,
+      notifCount,
+      messageCount,
+      alertCount,
+      clearNotifs,
+      clearMessages,
+      clearAlerts,
+      doctorNotifs,
+      patientNotifs,
+      markOneNotif,
+      markAllNotifs,
+      removeNotif,
+      refreshNotifications,
+      messages,
+      openConv,
+      sendMessage,
+      doctorSettings,
+      patientSettings,
+      toggleDoctorSetting,
+      togglePatientSetting,
+      isLoading,
     }}>
       {children}
     </BadgeContext.Provider>
