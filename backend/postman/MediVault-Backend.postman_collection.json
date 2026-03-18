@@ -211,6 +211,16 @@
             "exec": [
               "pm.test('Patient dashboard returns 200', function () {",
               "  pm.response.to.have.status(200);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('Patient dashboard summary shape is valid', function () {",
+              "  pm.expect(json).to.have.property('summary');",
+              "  pm.expect(json.summary).to.have.property('activeMedicines');",
+              "  pm.expect(json.summary).to.have.property('scheduledDosesToday');",
+              "  pm.expect(json.summary).to.have.property('unreadNotifications');",
+              "  pm.expect(json.summary).to.have.property('recentRecordsCount');",
+              "  pm.expect(Array.isArray(json.recentSymptoms)).to.be.true;",
+              "  pm.expect(Array.isArray(json.recentReports)).to.be.true;",
               "});"
             ]
           }
@@ -285,6 +295,16 @@
             "exec": [
               "pm.test('Doctor dashboard returns 200', function () {",
               "  pm.response.to.have.status(200);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('Doctor dashboard summary shape is valid', function () {",
+              "  pm.expect(json).to.have.property('summary');",
+              "  pm.expect(json.summary).to.have.property('assignedPatients');",
+              "  pm.expect(json.summary).to.have.property('highUrgencyPatients');",
+              "  pm.expect(json.summary).to.have.property('missedDosesLast24h');",
+              "  pm.expect(json.summary).to.have.property('recentRecordsCount');",
+              "  pm.expect(Array.isArray(json.patients)).to.be.true;",
+              "  pm.expect(Array.isArray(json.recentSymptoms)).to.be.true;",
               "});"
             ]
           }
