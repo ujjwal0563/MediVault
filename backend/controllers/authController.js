@@ -56,6 +56,30 @@ const sanitizeUser = (userDoc) => {
 	};
 };
 
+const mapDuplicateKeyToMessage = (error) => {
+	if (!error || error.code !== 11000 || !error.keyPattern) {
+		return null;
+	}
+
+	if (error.keyPattern.email) {
+		return "Email already registered.";
+	}
+
+	if (error.keyPattern.username) {
+		return "Username already taken.";
+	}
+
+	if (error.keyPattern.hospitalId) {
+		return "Hospital ID already registered.";
+	}
+
+	if (error.keyPattern.mobile || error.keyPattern.phone) {
+		return "Mobile already registered.";
+	}
+
+	return "Duplicate value detected for a unique field.";
+};
+
 const register = async (req, res, next) => {
 	try {
 		const {
@@ -180,6 +204,11 @@ const register = async (req, res, next) => {
 
 		return res.status(201).json(response);
 	} catch (error) {
+		const duplicateMessage = mapDuplicateKeyToMessage(error);
+		if (duplicateMessage) {
+			return res.status(409).json({ message: duplicateMessage });
+		}
+
 		return next(error);
 	}
 };
