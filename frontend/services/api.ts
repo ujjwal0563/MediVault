@@ -1,19 +1,23 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
+import {
+  API_BASE_URL,
+  API_TIMEOUT_MS,
+  ENABLE_API_LOGGING,
+  logApiConfig,
+} from "./config";
 
-const TOKEN_KEY = '@MediVault:authToken';
-const USER_KEY = '@MediVault:userData';
+const TOKEN_KEY = "authToken";
+const USER_KEY = "userData";
 
-const BASE_URL = (() => {
-  if (__DEV__) {
-    if (Platform.OS === 'android') {
-      return 'http://10.5.0.108:5000/api/v1';
-    }
-    return 'http://localhost:5000/api/v1';
-  }
-  return "https://medivault-cxas.onrender.com/api/v1";
-})();
-const TIMEOUT_MS = 120000;
+// Use centralized configuration
+const BASE_URL = API_BASE_URL;
+const TIMEOUT_MS = API_TIMEOUT_MS;
+
+// Log API configuration on startup (only in development)
+if (__DEV__) {
+  logApiConfig();
+}
 
 export interface User {
   id?: string;
@@ -26,7 +30,7 @@ export interface User {
   mobile?: string;
   phone?: string;
   address?: string;
-  role: 'patient' | 'doctor';
+  role: "patient" | "doctor";
   bloodType?: string;
   allergies?: string[];
   emergencyContact?: {
@@ -90,7 +94,7 @@ export interface SymptomLog {
   symptoms: string;
   aiConditions: string[];
   specialistType: string;
-  urgency: 'low' | 'medium' | 'high';
+  urgency: "low" | "medium" | "high";
   advice: string;
   createdAt: string;
 }
@@ -98,7 +102,7 @@ export interface SymptomLog {
 export interface Notification {
   _id: string;
   userId: string;
-  type: 'dose_missed' | 'symptom_urgent' | 'system';
+  type: "dose_missed" | "symptom_urgent" | "system";
   title: string;
   message: string;
   metadata?: Record<string, unknown>;
@@ -113,7 +117,7 @@ export interface DueDose {
   dosage: string;
   slot: string;
   scheduledTime: string;
-  status: 'taken' | 'missed' | 'pending';
+  status: "taken" | "missed" | "pending";
   isOverdue: boolean;
 }
 
@@ -156,7 +160,7 @@ const setToken = async (token: string): Promise<void> => {
   try {
     await AsyncStorage.setItem(TOKEN_KEY, token);
   } catch (error) {
-    console.error('Error saving token:', error);
+    console.error("Error saving token:", error);
   }
 };
 
@@ -164,7 +168,7 @@ const clearToken = async (): Promise<void> => {
   try {
     await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
   } catch (error) {
-    console.error('Error clearing token:', error);
+    console.error("Error clearing token:", error);
   }
 };
 
@@ -181,27 +185,27 @@ const setUserData = async (user: User): Promise<void> => {
   try {
     await AsyncStorage.setItem(USER_KEY, JSON.stringify(user));
   } catch (error) {
-    console.error('Error saving user data:', error);
+    console.error("Error saving user data:", error);
   }
 };
 
 const apiCall = async (
   endpoint: string,
   options: RequestInit = {},
-  requiresAuth: boolean = true
+  requiresAuth: boolean = true,
 ): Promise<{ ok: boolean; status: number; data: Record<string, unknown> }> => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
     ...((options.headers as Record<string, string>) || {}),
   };
 
   if (requiresAuth) {
     const token = await getToken();
     if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+      headers["Authorization"] = `Bearer ${token}`;
     }
   }
 
@@ -221,7 +225,7 @@ const apiCall = async (
       try {
         data = JSON.parse(text);
       } catch {
-        data = { message: 'Invalid response from server' };
+        data = { message: "Invalid response from server" };
       }
     }
 
@@ -229,11 +233,11 @@ const apiCall = async (
   } catch (error: unknown) {
     clearTimeout(timeoutId);
     const err = error as Error & { name?: string; message?: string };
-    if (err.name === 'AbortError') {
-      throw new Error('Request timed out. Please check your connection.');
+    if (err.name === "AbortError") {
+      throw new Error("Request timed out. Please check your connection.");
     }
-    if (err.name === 'TypeError' && err.message?.includes('Network')) {
-      throw new Error('Network error. Please check your internet connection.');
+    if (err.name === "TypeError" && err.message?.includes("Network")) {
+      throw new Error("Network error. Please check your internet connection.");
     }
     throw error;
   }
@@ -246,7 +250,7 @@ export const authAPI = {
     lastName?: string;
     email: string;
     password: string;
-    role: 'patient' | 'doctor';
+    role: "patient" | "doctor";
     phone?: string;
     mobile?: string;
     username?: string;
@@ -256,13 +260,19 @@ export const authAPI = {
     specialization?: string;
     hospitalAffiliation?: string;
   }): Promise<{ token: string; user: User }> => {
-    const response = await apiCall('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }, false);
+    const response = await apiCall(
+      "/auth/register",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      false,
+    );
 
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Registration failed');
+      throw new Error(
+        (response.data.message as string) || "Registration failed",
+      );
     }
 
     const result = response.data as { token: string; user: User };
@@ -279,16 +289,20 @@ export const authAPI = {
     hospitalId?: string;
     identifier?: string;
     password: string;
-    role?: 'patient' | 'doctor';
+    role?: "patient" | "doctor";
     loginMode?: string;
   }): Promise<{ token: string; user: User }> => {
-    const response = await apiCall('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }, false);
+    const response = await apiCall(
+      "/auth/login",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      false,
+    );
 
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Login failed');
+      throw new Error((response.data.message as string) || "Login failed");
     }
 
     const result = response.data as { token: string; user: User };
@@ -298,11 +312,13 @@ export const authAPI = {
   },
 
   me: async (): Promise<User> => {
-    const response = await apiCall('/auth/me');
+    const response = await apiCall("/auth/me");
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to get user');
+      throw new Error(
+        (response.data.message as string) || "Failed to get user",
+      );
     }
-    return (response.data.user as User);
+    return response.data.user as User;
   },
 
   updateProfile: async (data: {
@@ -313,12 +329,14 @@ export const authAPI = {
     mobile?: string;
     address?: string;
   }): Promise<User> => {
-    const response = await apiCall('/auth/profile', {
-      method: 'PATCH',
+    const response = await apiCall("/auth/profile", {
+      method: "PATCH",
       body: JSON.stringify(data),
     });
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to update profile');
+      throw new Error(
+        (response.data.message as string) || "Failed to update profile",
+      );
     }
     const updatedUser = response.data.user as User;
     await setUserData(updatedUser);
@@ -333,25 +351,32 @@ export const authAPI = {
     conditions?: string[];
     emergencyContact?: { name?: string; phone?: string };
   }): Promise<User> => {
-    const response = await apiCall('/auth/health', {
-      method: 'PATCH',
+    const response = await apiCall("/auth/health", {
+      method: "PATCH",
       body: JSON.stringify(data),
     });
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to update health info');
+      throw new Error(
+        (response.data.message as string) || "Failed to update health info",
+      );
     }
     const updatedUser = response.data.user as User;
     await setUserData(updatedUser);
     return updatedUser;
   },
 
-  changePassword: async (currentPassword: string, newPassword: string): Promise<void> => {
-    const response = await apiCall('/auth/change-password', {
-      method: 'POST',
+  changePassword: async (
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> => {
+    const response = await apiCall("/auth/change-password", {
+      method: "POST",
       body: JSON.stringify({ currentPassword, newPassword }),
     });
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to change password');
+      throw new Error(
+        (response.data.message as string) || "Failed to change password",
+      );
     }
   },
 
@@ -376,9 +401,11 @@ export const patientAPI = {
     recentReports: Report[];
   }> => {
     try {
-      const response = await apiCall('/patient/dashboard');
+      const response = await apiCall("/patient/dashboard");
       if (!response.ok) {
-        throw new Error((response.data.message as string) || 'Failed to get dashboard');
+        throw new Error(
+          (response.data.message as string) || "Failed to get dashboard",
+        );
       }
       return response.data as {
         summary: {
@@ -396,7 +423,7 @@ export const patientAPI = {
       };
     } catch (error) {
       // Return mock data when backend is not available
-      console.log('Using mock data for patient dashboard');
+      console.log("Using mock data for patient dashboard");
       return {
         summary: {
           activeMedicines: 5,
@@ -415,60 +442,70 @@ export const patientAPI = {
   },
 
   getRecords: async (): Promise<MedRecord[]> => {
-    const response = await apiCall('/patient/records');
+    const response = await apiCall("/patient/records");
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to get records');
+      throw new Error(
+        (response.data.message as string) || "Failed to get records",
+      );
     }
-    return (response.data.records as MedRecord[]);
+    return response.data.records as MedRecord[];
   },
 
   getRecordById: async (id: string): Promise<MedRecord> => {
     const response = await apiCall(`/patient/records/${id}`);
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to get record');
+      throw new Error(
+        (response.data.message as string) || "Failed to get record",
+      );
     }
-    return (response.data.record as MedRecord);
+    return response.data.record as MedRecord;
   },
 
   getReports: async (): Promise<Report[]> => {
-    const response = await apiCall('/patient/reports');
+    const response = await apiCall("/patient/reports");
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to get reports');
+      throw new Error(
+        (response.data.message as string) || "Failed to get reports",
+      );
     }
-    return (response.data.reports as Report[]);
+    return response.data.reports as Report[];
   },
 
   uploadReport: async (formData: FormData): Promise<Report> => {
     const token = await getToken();
     const response = await fetch(`${BASE_URL}/patient/reports`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
       },
       body: formData,
     });
 
     const text = await response.text();
-    if (!text) throw new Error('Empty response from server');
+    if (!text) throw new Error("Empty response from server");
 
     let data: Record<string, unknown> = {};
     try {
       data = JSON.parse(text);
     } catch {
-      throw new Error('Invalid JSON response');
+      throw new Error("Invalid JSON response");
     }
 
     if (!response.ok) {
-      throw new Error((data.message as string) || 'Upload failed');
+      throw new Error((data.message as string) || "Upload failed");
     }
 
-    return (data.report as Report);
+    return data.report as Report;
   },
 
   deleteReport: async (id: string): Promise<void> => {
-    const response = await apiCall(`/patient/reports/${id}`, { method: 'DELETE' });
+    const response = await apiCall(`/patient/reports/${id}`, {
+      method: "DELETE",
+    });
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to delete report');
+      throw new Error(
+        (response.data.message as string) || "Failed to delete report",
+      );
     }
   },
 };
@@ -488,9 +525,11 @@ export const doctorAPI = {
     recentReports: Array<Report & { patientId: { name: string } }>;
   }> => {
     try {
-      const response = await apiCall('/doctor/dashboard');
+      const response = await apiCall("/doctor/dashboard");
       if (!response.ok) {
-        throw new Error((response.data.message as string) || 'Failed to get dashboard');
+        throw new Error(
+          (response.data.message as string) || "Failed to get dashboard",
+        );
       }
       return response.data as {
         summary: {
@@ -507,7 +546,7 @@ export const doctorAPI = {
       };
     } catch (error) {
       // Return mock data when backend is not available
-      console.log('Using mock data for doctor dashboard');
+      console.log("Using mock data for doctor dashboard");
       return {
         summary: {
           assignedPatients: 12,
@@ -518,55 +557,135 @@ export const doctorAPI = {
           recentRecordsCount: 8,
         },
         patients: [
-          { _id: '1', name: 'John Smith', email: 'john@example.com', bloodType: 'O+', phone: '+1234567890', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-          { _id: '2', name: 'Sarah Johnson', email: 'sarah@example.com', bloodType: 'A+', phone: '+1234567891', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-          { _id: '3', name: 'Mike Williams', email: 'mike@example.com', bloodType: 'B+', phone: '+1234567892', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+          {
+            _id: "1",
+            name: "John Smith",
+            email: "john@example.com",
+            bloodType: "O+",
+            phone: "+1234567890",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          {
+            _id: "2",
+            name: "Sarah Johnson",
+            email: "sarah@example.com",
+            bloodType: "A+",
+            phone: "+1234567891",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          {
+            _id: "3",
+            name: "Mike Williams",
+            email: "mike@example.com",
+            bloodType: "B+",
+            phone: "+1234567892",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
         ],
         recentSymptoms: [
-          { _id: '1', patientId: '1', symptoms: 'Chest pain and shortness of breath', urgency: 'high', createdAt: new Date().toISOString(), aiConditions: [], specialistType: 'Cardiologist', advice: 'Immediate attention required' },
-          { _id: '2', patientId: '2', symptoms: 'Headache and dizziness', urgency: 'medium', createdAt: new Date().toISOString(), aiConditions: [], specialistType: 'Neurologist', advice: 'Schedule appointment' },
+          {
+            _id: "1",
+            patientId: "1",
+            symptoms: "Chest pain and shortness of breath",
+            urgency: "high",
+            createdAt: new Date().toISOString(),
+            aiConditions: [],
+            specialistType: "Cardiologist",
+            advice: "Immediate attention required",
+          },
+          {
+            _id: "2",
+            patientId: "2",
+            symptoms: "Headache and dizziness",
+            urgency: "medium",
+            createdAt: new Date().toISOString(),
+            aiConditions: [],
+            specialistType: "Neurologist",
+            advice: "Schedule appointment",
+          },
         ],
         recentReports: [],
       } as any;
     }
   },
 
-  getPatients: async (query?: string): Promise<{ count: number; patients: Patient[] }> => {
+  getPatients: async (
+    query?: string,
+  ): Promise<{ count: number; patients: Patient[] }> => {
     try {
-      const endpoint = query ? `/doctor/patients?q=${encodeURIComponent(query)}` : '/doctor/patients';
+      const endpoint = query
+        ? `/doctor/patients?q=${encodeURIComponent(query)}`
+        : "/doctor/patients";
       const response = await apiCall(endpoint);
       if (!response.ok) {
-        throw new Error((response.data.message as string) || 'Failed to get patients');
+        throw new Error(
+          (response.data.message as string) || "Failed to get patients",
+        );
       }
       return response.data as { count: number; patients: Patient[] };
     } catch (error) {
       // Return mock data when backend is not available
-      console.log('Using mock data for patients');
+      console.log("Using mock data for patients");
       return {
         count: 3,
         patients: [
-          { _id: '1', name: 'John Smith', email: 'john@example.com', bloodType: 'O+', phone: '+1234567890', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-          { _id: '2', name: 'Sarah Johnson', email: 'sarah@example.com', bloodType: 'A+', phone: '+1234567891', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-          { _id: '3', name: 'Mike Williams', email: 'mike@example.com', bloodType: 'B+', phone: '+1234567892', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+          {
+            _id: "1",
+            name: "John Smith",
+            email: "john@example.com",
+            bloodType: "O+",
+            phone: "+1234567890",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          {
+            _id: "2",
+            name: "Sarah Johnson",
+            email: "sarah@example.com",
+            bloodType: "A+",
+            phone: "+1234567891",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          {
+            _id: "3",
+            name: "Mike Williams",
+            email: "mike@example.com",
+            bloodType: "B+",
+            phone: "+1234567892",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
         ] as any,
       };
     }
   },
 
   assignPatient: async (patientId: string): Promise<Patient> => {
-    const response = await apiCall(`/doctor/patients/${patientId}/assign`, { method: 'POST' });
+    const response = await apiCall(`/doctor/patients/${patientId}/assign`, {
+      method: "POST",
+    });
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to assign patient');
+      throw new Error(
+        (response.data.message as string) || "Failed to assign patient",
+      );
     }
-    return (response.data.patient as Patient);
+    return response.data.patient as Patient;
   },
 
   unassignPatient: async (patientId: string): Promise<Patient> => {
-    const response = await apiCall(`/doctor/patients/${patientId}/unassign`, { method: 'POST' });
+    const response = await apiCall(`/doctor/patients/${patientId}/unassign`, {
+      method: "POST",
+    });
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to unassign patient');
+      throw new Error(
+        (response.data.message as string) || "Failed to unassign patient",
+      );
     }
-    return (response.data.patient as Patient);
+    return response.data.patient as Patient;
   },
 
   createRecord: async (data: {
@@ -576,49 +695,90 @@ export const doctorAPI = {
     medicines?: string[];
     date?: string;
   }): Promise<MedRecord> => {
-    const response = await apiCall('/doctor/records', {
-      method: 'POST',
+    const response = await apiCall("/doctor/records", {
+      method: "POST",
       body: JSON.stringify(data),
     });
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to create record');
+      throw new Error(
+        (response.data.message as string) || "Failed to create record",
+      );
     }
-    return (response.data.record as MedRecord);
+    return response.data.record as MedRecord;
   },
 
-  getPatientRecords: async (patientId: string): Promise<{ patient: Patient; records: MedRecord[] }> => {
+  getPatientRecords: async (
+    patientId: string,
+  ): Promise<{ patient: Patient; records: MedRecord[] }> => {
     try {
       const response = await apiCall(`/doctor/patients/${patientId}/records`);
       if (!response.ok) {
-        throw new Error((response.data.message as string) || 'Failed to get patient records');
+        throw new Error(
+          (response.data.message as string) || "Failed to get patient records",
+        );
       }
       return response.data as { patient: Patient; records: MedRecord[] };
     } catch (error) {
-      console.log('Using mock data for patient records');
+      console.log("Using mock data for patient records");
       return {
-        patient: { _id: patientId, name: 'John Smith', email: 'john@example.com', bloodType: 'O+', phone: '+1234567890', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as any,
+        patient: {
+          _id: patientId,
+          name: "John Smith",
+          email: "john@example.com",
+          bloodType: "O+",
+          phone: "+1234567890",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        } as any,
         records: [
-          { _id: '1', date: new Date().toISOString(), diagnosis: 'Annual Checkup', type: 'Check-up' },
-          { _id: '2', date: new Date(Date.now() - 7*24*60*60*1000).toISOString(), diagnosis: 'Flu Treatment', type: 'OPD' },
+          {
+            _id: "1",
+            date: new Date().toISOString(),
+            diagnosis: "Annual Checkup",
+            type: "Check-up",
+          },
+          {
+            _id: "2",
+            date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+            diagnosis: "Flu Treatment",
+            type: "OPD",
+          },
         ] as any,
       };
     }
   },
 
-  getPatientReports: async (patientId: string): Promise<{ patient: { id: string; name: string }; reports: Report[] }> => {
+  getPatientReports: async (
+    patientId: string,
+  ): Promise<{ patient: { id: string; name: string }; reports: Report[] }> => {
     try {
       const response = await apiCall(`/doctor/patients/${patientId}/reports`);
       if (!response.ok) {
-        throw new Error((response.data.message as string) || 'Failed to get patient reports');
+        throw new Error(
+          (response.data.message as string) || "Failed to get patient reports",
+        );
       }
-      return response.data as { patient: { id: string; name: string }; reports: Report[] };
+      return response.data as {
+        patient: { id: string; name: string };
+        reports: Report[];
+      };
     } catch (error) {
-      console.log('Using mock data for patient reports');
+      console.log("Using mock data for patient reports");
       return {
-        patient: { id: patientId, name: 'John Smith' },
+        patient: { id: patientId, name: "John Smith" },
         reports: [
-          { _id: '1', reportType: 'Blood Test', createdAt: new Date().toISOString() },
-          { _id: '2', reportType: 'X-Ray', createdAt: new Date(Date.now() - 14*24*60*60*1000).toISOString() },
+          {
+            _id: "1",
+            reportType: "Blood Test",
+            createdAt: new Date().toISOString(),
+          },
+          {
+            _id: "2",
+            reportType: "X-Ray",
+            createdAt: new Date(
+              Date.now() - 14 * 24 * 60 * 60 * 1000,
+            ).toISOString(),
+          },
         ] as any,
       };
     }
@@ -628,14 +788,27 @@ export const doctorAPI = {
     try {
       const response = await apiCall(`/doctor/patients/${patientId}/medicines`);
       if (!response.ok) {
-        throw new Error((response.data.message as string) || 'Failed to get patient medicines');
+        throw new Error(
+          (response.data.message as string) ||
+            "Failed to get patient medicines",
+        );
       }
-      return (response.data.medicines as Medicine[]);
+      return response.data.medicines as Medicine[];
     } catch (error) {
-      console.log('Using mock data for patient medicines');
+      console.log("Using mock data for patient medicines");
       return [
-        { _id: '1', medicineName: 'Aspirin', dosage: '100mg', frequency: 'Once daily' },
-        { _id: '2', medicineName: 'Vitamin D', dosage: '1000 IU', frequency: 'Once daily' },
+        {
+          _id: "1",
+          medicineName: "Aspirin",
+          dosage: "100mg",
+          frequency: "Once daily",
+        },
+        {
+          _id: "2",
+          medicineName: "Vitamin D",
+          dosage: "1000 IU",
+          frequency: "Once daily",
+        },
       ] as any;
     }
   },
@@ -644,86 +817,105 @@ export const doctorAPI = {
     try {
       const response = await apiCall(`/doctor/patients/${patientId}/symptoms`);
       if (!response.ok) {
-        throw new Error((response.data.message as string) || 'Failed to get patient symptoms');
+        throw new Error(
+          (response.data.message as string) || "Failed to get patient symptoms",
+        );
       }
-      return (response.data.logs as SymptomLog[]);
+      return response.data.logs as SymptomLog[];
     } catch (error) {
-      console.log('Using mock data for patient symptoms');
+      console.log("Using mock data for patient symptoms");
       return [
-        { _id: '1', symptoms: 'Headache', urgency: 'low', createdAt: new Date().toISOString(), aiConditions: [], specialistType: 'General Physician', advice: 'Rest and hydrate' },
+        {
+          _id: "1",
+          symptoms: "Headache",
+          urgency: "low",
+          createdAt: new Date().toISOString(),
+          aiConditions: [],
+          specialistType: "General Physician",
+          advice: "Rest and hydrate",
+        },
       ] as any;
     }
   },
 
-  scanPatientQr: async (qrToken: string, context?: string): Promise<Patient> => {
-    const response = await apiCall('/qr/scan', {
-      method: 'POST',
+  scanPatientQr: async (
+    qrToken: string,
+    context?: string,
+  ): Promise<Patient> => {
+    const response = await apiCall("/qr/scan", {
+      method: "POST",
       body: JSON.stringify({ qrToken, context }),
     });
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to scan QR');
+      throw new Error((response.data.message as string) || "Failed to scan QR");
     }
-    return (response.data.patient as Patient);
+    return response.data.patient as Patient;
   },
 
-  getScanAuditLogs: async (): Promise<Array<{
-    _id: string;
-    patientId: { name: string };
-    scannedAt: string;
-    scannerType: string;
-    context: string;
-  }>> => {
-    const response = await apiCall('/qr/audit');
-    if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to get scan logs');
-    }
-    return (response.data.logs as Array<{
+  getScanAuditLogs: async (): Promise<
+    Array<{
       _id: string;
       patientId: { name: string };
       scannedAt: string;
       scannerType: string;
       context: string;
-    }>);
+    }>
+  > => {
+    const response = await apiCall("/qr/audit");
+    if (!response.ok) {
+      throw new Error(
+        (response.data.message as string) || "Failed to get scan logs",
+      );
+    }
+    return response.data.logs as Array<{
+      _id: string;
+      patientId: { name: string };
+      scannedAt: string;
+      scannerType: string;
+      context: string;
+    }>;
   },
 };
 
 export const medicineAPI = {
   getMedicines: async (): Promise<Medicine[]> => {
     try {
-      const response = await apiCall('/medicine');
+      const response = await apiCall("/medicine");
       if (!response.ok) {
-        throw new Error((response.data.message as string) || 'Failed to get medicines');
+        throw new Error(
+          (response.data.message as string) || "Failed to get medicines",
+        );
       }
-      return (response.data.medicines as Medicine[]);
+      return response.data.medicines as Medicine[];
     } catch (error) {
       // Return mock data when backend is not available
-      console.log('Using mock data for medicines');
+      console.log("Using mock data for medicines");
       return [
         {
-          _id: '1',
-          name: 'Aspirin',
-          medicineName: 'Aspirin',
-          dosage: '100mg',
-          frequency: 'Once daily',
-          timeSlots: ['Morning'],
+          _id: "1",
+          name: "Aspirin",
+          medicineName: "Aspirin",
+          dosage: "100mg",
+          frequency: "Once daily",
+          timeSlots: ["Morning"],
           startDate: new Date().toISOString(),
         },
         {
-          _id: '2',
-          name: 'Metformin',
-          medicineName: 'Metformin',
-          dosage: '500mg',
-          frequency: 'Twice daily',
-          timeSlots: ['Morning', 'Evening'],
+          _id: "2",
+          name: "Metformin",
+          medicineName: "Metformin",
+          dosage: "500mg",
+          frequency: "Twice daily",
+          timeSlots: ["Morning", "Evening"],
           startDate: new Date().toISOString(),
         },
         {
-          _id: '3',
-          name: 'Vitamin D',
-          medicineName: 'Vitamin D',
-          dosage: '1000 IU',
-          frequency: 'Once daily',
-          timeSlots: ['Morning'],
+          _id: "3",
+          name: "Vitamin D",
+          medicineName: "Vitamin D",
+          dosage: "1000 IU",
+          frequency: "Once daily",
+          timeSlots: ["Morning"],
           startDate: new Date().toISOString(),
         },
       ] as any;
@@ -739,60 +931,96 @@ export const medicineAPI = {
     endDate?: string;
     instructions?: string;
   }): Promise<Medicine> => {
-    const response = await apiCall('/medicine', {
-      method: 'POST',
+    const response = await apiCall("/medicine", {
+      method: "POST",
       body: JSON.stringify(data),
     });
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to add medicine');
+      throw new Error(
+        (response.data.message as string) || "Failed to add medicine",
+      );
     }
-    return (response.data.medicine as Medicine);
+    return response.data.medicine as Medicine;
   },
 
   getDueDoses: async (): Promise<{
-    summary: { total: number; taken: number; missed: number; pending: number; overdue: number };
+    summary: {
+      total: number;
+      taken: number;
+      missed: number;
+      pending: number;
+      overdue: number;
+    };
     dueDoses: DueDose[];
   }> => {
-    const response = await apiCall('/medicine/due');
+    const response = await apiCall("/medicine/due");
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to get due doses');
+      throw new Error(
+        (response.data.message as string) || "Failed to get due doses",
+      );
     }
     return response.data as {
-      summary: { total: number; taken: number; missed: number; pending: number; overdue: number };
+      summary: {
+        total: number;
+        taken: number;
+        missed: number;
+        pending: number;
+        overdue: number;
+      };
       dueDoses: DueDose[];
     };
   },
 
-  logDose: async (medicineId: string, status: 'taken' | 'missed', scheduledTime?: string): Promise<void> => {
+  logDose: async (
+    medicineId: string,
+    status: "taken" | "missed",
+    scheduledTime?: string,
+  ): Promise<void> => {
     const response = await apiCall(`/medicine/${medicineId}/log`, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify({ status, scheduledTime }),
     });
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to log dose');
+      throw new Error(
+        (response.data.message as string) || "Failed to log dose",
+      );
     }
   },
 
-  markDoseStatus: async (medicineId: string, status: 'taken' | 'missed', scheduledTime?: string): Promise<void> => {
-    const response = await apiCall('/medicine/mark', {
-      method: 'POST',
+  markDoseStatus: async (
+    medicineId: string,
+    status: "taken" | "missed",
+    scheduledTime?: string,
+  ): Promise<void> => {
+    const response = await apiCall("/medicine/mark", {
+      method: "POST",
       body: JSON.stringify({ medicineId, status, scheduledTime }),
     });
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to mark dose');
+      throw new Error(
+        (response.data.message as string) || "Failed to mark dose",
+      );
     }
   },
 
-  getAdherenceSummary: async (medicineId?: string): Promise<AdherenceSummary[]> => {
-    const endpoint = medicineId ? `/medicine/adherence?medicineId=${medicineId}` : '/medicine/adherence';
+  getAdherenceSummary: async (
+    medicineId?: string,
+  ): Promise<AdherenceSummary[]> => {
+    const endpoint = medicineId
+      ? `/medicine/adherence?medicineId=${medicineId}`
+      : "/medicine/adherence";
     const response = await apiCall(endpoint);
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to get adherence');
+      throw new Error(
+        (response.data.message as string) || "Failed to get adherence",
+      );
     }
-    return (response.data.summary as AdherenceSummary[]);
+    return response.data.summary as AdherenceSummary[];
   },
 
-  getWeeklyAdherence: async (medicineId?: string): Promise<{
+  getWeeklyAdherence: async (
+    medicineId?: string,
+  ): Promise<{
     trend: Array<{
       date: string;
       total: number;
@@ -801,10 +1029,14 @@ export const medicineAPI = {
       adherencePercent: number;
     }>;
   }> => {
-    const endpoint = medicineId ? `/medicine/adherence/weekly?medicineId=${medicineId}` : '/medicine/adherence/weekly';
+    const endpoint = medicineId
+      ? `/medicine/adherence/weekly?medicineId=${medicineId}`
+      : "/medicine/adherence/weekly";
     const response = await apiCall(endpoint);
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to get weekly adherence');
+      throw new Error(
+        (response.data.message as string) || "Failed to get weekly adherence",
+      );
     }
     return response.data as {
       trend: Array<{
@@ -820,22 +1052,26 @@ export const medicineAPI = {
 
 export const symptomAPI = {
   checkSymptoms: async (symptoms: string): Promise<SymptomLog> => {
-    const response = await apiCall('/symptom/check', {
-      method: 'POST',
+    const response = await apiCall("/symptom/check", {
+      method: "POST",
       body: JSON.stringify({ symptoms }),
     });
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to check symptoms');
+      throw new Error(
+        (response.data.message as string) || "Failed to check symptoms",
+      );
     }
-    return (response.data.result as SymptomLog);
+    return response.data.result as SymptomLog;
   },
 
   getHistory: async (): Promise<SymptomLog[]> => {
-    const response = await apiCall('/symptom/history');
+    const response = await apiCall("/symptom/history");
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to get symptom history');
+      throw new Error(
+        (response.data.message as string) || "Failed to get symptom history",
+      );
     }
-    return (response.data.logs as SymptomLog[]);
+    return response.data.logs as SymptomLog[];
   },
 };
 
@@ -858,18 +1094,21 @@ export const notificationAPI = {
     };
   }> => {
     const searchParams = new URLSearchParams();
-    if (params?.unreadOnly) searchParams.set('unreadOnly', 'true');
-    if (params?.isRead !== undefined) searchParams.set('isRead', String(params.isRead));
-    if (params?.type) searchParams.set('type', params.type);
-    if (params?.limit) searchParams.set('limit', String(params.limit));
-    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.unreadOnly) searchParams.set("unreadOnly", "true");
+    if (params?.isRead !== undefined)
+      searchParams.set("isRead", String(params.isRead));
+    if (params?.type) searchParams.set("type", params.type);
+    if (params?.limit) searchParams.set("limit", String(params.limit));
+    if (params?.page) searchParams.set("page", String(params.page));
 
     const query = searchParams.toString();
-    const endpoint = query ? `/notifications?${query}` : '/notifications';
+    const endpoint = query ? `/notifications?${query}` : "/notifications";
 
     const response = await apiCall(endpoint);
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to get notifications');
+      throw new Error(
+        (response.data.message as string) || "Failed to get notifications",
+      );
     }
     return response.data as {
       notifications: Notification[];
@@ -884,43 +1123,81 @@ export const notificationAPI = {
     };
   },
 
-  getUnreadCount: async (): Promise<{ unreadCount: number; unreadByType: Record<string, number> }> => {
-    const response = await apiCall('/notifications/unread-count');
+  getUnreadCount: async (): Promise<{
+    unreadCount: number;
+    unreadByType: Record<string, number>;
+  }> => {
+    const response = await apiCall("/notifications/unread-count");
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to get unread count');
+      throw new Error(
+        (response.data.message as string) || "Failed to get unread count",
+      );
     }
-    return response.data as { unreadCount: number; unreadByType: Record<string, number> };
+    return response.data as {
+      unreadCount: number;
+      unreadByType: Record<string, number>;
+    };
   },
 
   markAsRead: async (notificationId: string): Promise<void> => {
-    const response = await apiCall(`/notifications/${notificationId}/read`, { method: 'PATCH' });
+    const response = await apiCall(`/notifications/${notificationId}/read`, {
+      method: "PATCH",
+    });
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to mark as read');
+      throw new Error(
+        (response.data.message as string) || "Failed to mark as read",
+      );
     }
   },
 
   markAllAsRead: async (): Promise<void> => {
-    const response = await apiCall('/notifications/read-all', { method: 'PATCH' });
+    const response = await apiCall("/notifications/read-all", {
+      method: "PATCH",
+    });
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to mark all as read');
+      throw new Error(
+        (response.data.message as string) || "Failed to mark all as read",
+      );
     }
   },
 
   deleteNotification: async (notificationId: string): Promise<void> => {
-    const response = await apiCall(`/notifications/${notificationId}`, { method: 'DELETE' });
+    const response = await apiCall(`/notifications/${notificationId}`, {
+      method: "DELETE",
+    });
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to delete notification');
+      throw new Error(
+        (response.data.message as string) || "Failed to delete notification",
+      );
     }
   },
 };
 
 export const qrAPI = {
-  getMyProfile: async (): Promise<{ qrToken: string; payload: { patientId: string; name: string; bloodType: string | null; allergies: string[] } }> => {
-    const response = await apiCall('/qr/my-profile');
+  getMyProfile: async (): Promise<{
+    qrToken: string;
+    payload: {
+      patientId: string;
+      name: string;
+      bloodType: string | null;
+      allergies: string[];
+    };
+  }> => {
+    const response = await apiCall("/qr/my-profile");
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to get QR profile');
+      throw new Error(
+        (response.data.message as string) || "Failed to get QR profile",
+      );
     }
-    return response.data as { qrToken: string; payload: { patientId: string; name: string; bloodType: string | null; allergies: string[] } };
+    return response.data as {
+      qrToken: string;
+      payload: {
+        patientId: string;
+        name: string;
+        bloodType: string | null;
+        allergies: string[];
+      };
+    };
   },
 
   getEmergencyProfile: async (): Promise<{
@@ -928,9 +1205,11 @@ export const qrAPI = {
     url: string;
     expiresIn: string;
   }> => {
-    const response = await apiCall('/qr/my-emergency-profile');
+    const response = await apiCall("/qr/my-emergency-profile");
     if (!response.ok) {
-      throw new Error((response.data.message as string) || 'Failed to get emergency profile');
+      throw new Error(
+        (response.data.message as string) || "Failed to get emergency profile",
+      );
     }
     return response.data as { qrToken: string; url: string; expiresIn: string };
   },
