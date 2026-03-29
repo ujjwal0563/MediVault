@@ -1321,7 +1321,7 @@ export const supportedLanguages: Array<{ code: LanguageCode; label: string }> = 
   { code: 'hi', label: 'Hindi' },
   { code: 'ta', label: 'Tamil' },
   { code: 'kn', label: 'Kannada' },
-  { code: 'bh', label: 'Bihari' },
+  { code: 'bh', label: 'Bhojpuri' },
 ];
 
 type TranslateParams = Record<string, string>;
