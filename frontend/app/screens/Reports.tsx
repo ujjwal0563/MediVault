@@ -298,18 +298,29 @@ export default function ReportsScreen() {
               reports.map((r, i) => (
                 <View key={r._id} style={[rp.reportItem, i < reports.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.borderSoft }]}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 }}>
                       <IconBox icon={getReportIcon(r.reportType)} color={colors.teal} bg={colors.tealSoft} size={46} />
-                      <View>
+                      <View style={{ flex: 1 }}>
                         <Text style={{ fontWeight: '700', fontSize: 14, color: colors.textPrimary }}>{r.reportType}</Text>
                         <Text style={{ fontSize: 12, color: colors.textFaint, marginTop: 3 }}>
                           {formatDate(r.createdAt)} - {formatFileSize(r.size)}
                         </Text>
-                        <Text style={{ fontSize: 11, color: colors.textFaint }} numberOfLines={1}>
+                        <Text style={{ fontSize: 11, color: colors.textFaint }} numberOfLines={1} ellipsizeMode="middle">
                           {r.originalName}
                         </Text>
                       </View>
                     </View>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    {r.aiSummary && (
+                      <View style={[rp.aiBox, { backgroundColor: colors.bgPage, borderLeftColor: colors.teal, flex: 1, marginRight: 12 }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                          <Ionicons name="bulb-outline" size={16} color={colors.teal} />
+                          <Text style={[rp.aiLabel, { color: colors.teal }]}>{t('reports.aiSummary')}</Text>
+                        </View>
+                        <Text style={[rp.aiText, { color: colors.textMuted }]} numberOfLines={2}>{r.aiSummary}</Text>
+                      </View>
+                    )}
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                       <TouchableOpacity onPress={() => handleDeleteReport(r._id)} activeOpacity={0.7}>
                         <Ionicons name="trash-outline" size={20} color={colors.danger} />
@@ -317,15 +328,6 @@ export default function ReportsScreen() {
                       <Button label={t('common.view')} onPress={() => handleViewReport(r)} size="sm" />
                     </View>
                   </View>
-                  {r.aiSummary && (
-                    <View style={[rp.aiBox, { backgroundColor: colors.bgPage, borderLeftColor: colors.teal }]}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                        <Ionicons name="bulb-outline" size={16} color={colors.teal} />
-                        <Text style={[rp.aiLabel, { color: colors.teal }]}>{t('reports.aiSummary')}</Text>
-                      </View>
-                      <Text style={[rp.aiText, { color: colors.textMuted }]}>{r.aiSummary}</Text>
-                    </View>
-                  )}
                 </View>
               ))
             )}
