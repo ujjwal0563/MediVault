@@ -1,9 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Platform } from "react-native";
 import {
   API_BASE_URL,
   API_TIMEOUT_MS,
-  ENABLE_API_LOGGING,
   logApiConfig,
 } from "./config";
 
@@ -212,7 +210,7 @@ const setUserData = async (user: User): Promise<void> => {
   }
 };
 
-const getMockResponse = (endpoint: string): { ok: boolean; status: number; data: Record<string, unknown> } => {
+const getMockResponse = (endpoint: string, requestBody?: string): { ok: boolean; status: number; data: Record<string, unknown> } => {
   // Patient endpoints
   if (endpoint === '/patient/dashboard') {
     return {
@@ -373,9 +371,12 @@ const getMockResponse = (endpoint: string): { ok: boolean; status: number; data:
       role: 'patient',
       bloodType: 'O+',
       allergies: [] as string[],
+      caregiverName: '' as string | undefined,
+      caregiverEmail: '' as string | undefined,
+      caregiverPhone: '' as string | undefined,
     };
     try {
-      const body = JSON.parse(options.body as string || '{}');
+      const body = JSON.parse(requestBody || '{}');
       if (body.firstName) userData.firstName = body.firstName;
       if (body.lastName) userData.lastName = body.lastName;
       if (body.name) userData.name = body.name;
@@ -384,6 +385,9 @@ const getMockResponse = (endpoint: string): { ok: boolean; status: number; data:
       if (body.role) userData.role = body.role;
       if (body.bloodType) userData.bloodType = body.bloodType;
       if (body.allergies) userData.allergies = body.allergies;
+      if (body.caregiverName) userData.caregiverName = body.caregiverName;
+      if (body.caregiverEmail) userData.caregiverEmail = body.caregiverEmail;
+      if (body.caregiverPhone) userData.caregiverPhone = body.caregiverPhone;
     } catch {}
     return {
       ok: true,
@@ -398,6 +402,20 @@ const getMockResponse = (endpoint: string): { ok: boolean; status: number; data:
     };
   }
   if (endpoint === '/auth/login') {
+    let userData = {
+      firstName: 'User',
+      lastName: '',
+      name: 'User',
+      email: 'user@example.com',
+      role: 'patient',
+      bloodType: 'O+',
+      allergies: [] as string[],
+    };
+    try {
+      const body = JSON.parse(requestBody || '{}');
+      if (body.identifier) userData.email = body.identifier;
+      if (body.role) userData.role = body.role;
+    } catch {}
     return {
       ok: true,
       status: 200,
@@ -405,13 +423,7 @@ const getMockResponse = (endpoint: string): { ok: boolean; status: number; data:
         token: 'demo-token-' + Date.now(),
         user: {
           _id: 'demo-user-' + Date.now(),
-          firstName: 'User',
-          lastName: '',
-          name: 'User',
-          email: 'user@example.com',
-          role: 'patient',
-          bloodType: 'O+',
-          allergies: [],
+          ...userData,
         },
       },
     };
@@ -443,9 +455,6 @@ const apiCall = async (
     }
   }
 
-  // For auth endpoints, we'll only use mock on network errors/timeouts
-  const isAuthEndpoint = endpoint === '/auth/register' || endpoint === '/auth/login';
-  
   try {
     const response = await fetch(`${BASE_URL}${endpoint}`, {
       ...options,
@@ -466,22 +475,19 @@ const apiCall = async (
       }
     }
 
-    // For auth endpoints, return mock if backend returns validation errors
-    // Don't use mock for auth - let the real error show so user can fix input
-    
     return { ok: response.ok, status: response.status, data };
   } catch (error: unknown) {
     clearTimeout(timeoutId);
     const err = error as Error & { name?: string; message?: string };
     if (err.name === "AbortError") {
       if (isDemo) {
-        return getMockResponse(endpoint);
+        return getMockResponse(endpoint, options.body as string | undefined);
       }
       throw new Error("Request timed out. Please check your connection.");
     }
     if (err.name === "TypeError" && err.message?.includes("Network")) {
       if (isDemo) {
-        return getMockResponse(endpoint);
+        return getMockResponse(endpoint, options.body as string | undefined);
       }
       throw new Error("Network error. Please check your internet connection.");
     }
