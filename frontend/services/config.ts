@@ -21,14 +21,14 @@ import { Platform } from 'react-native';
 const DEV_LOCALHOST_URL = 'http://localhost:5000/api/v1';
 
 // For Android Emulator (special IP that maps to host machine's localhost)
-const DEV_ANDROID_EMULATOR_URL = 'http://10.0.2.2:5000/api/v1';
+const DEV_ANDROID_EMULATOR_URL = 'http://10.5.1.152:5000/api/v1';
 
 // For Physical Devices on Same WiFi Network
 // Find your computer's local IP:
 // - Windows: Run `ipconfig` in terminal, look for IPv4 Address
 // - Mac/Linux: Run `ifconfig` or `ip addr`, look for inet address
 // - Example: http://192.168.1.100:5000/api/v1
-const DEV_LOCAL_NETWORK_URL = 'http://10.5.0.12:5000/api/v1';
+const DEV_LOCAL_NETWORK_URL = 'http://10.5.1.152:5000/api/v1';
 
 /**
  * PRODUCTION CONFIGURATION
