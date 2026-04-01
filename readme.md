@@ -22,6 +22,7 @@
 MediVault is an innovative healthcare platform that bridges the gap between patients and healthcare providers by offering:
 
 - **Centralized Medical Records**: Store and manage all medical records, reports, and documents securely in one place
+- **AI-Powered Analysis**: Analyze uploaded medical reports and medicine data to provide faster health insights
 - **Real-time Communication**: Instant messaging between patients and doctors for quick consultations
 - **Medicine Management**: Track medication schedules, dosages, and maintain detailed medicine logs
 - **Health Monitoring**: Log symptoms, track health metrics, and receive timely notifications
@@ -85,6 +86,8 @@ MediVault is an innovative healthcare platform that bridges the gap between pati
 ### 📊 Clinical Features
 - **Medical Records System**: Full-featured document and report management
 - **Dose Logging**: Track medication adherence and responses
+- **AI Report Analysis**: AI helps analyze medical reports to highlight important observations
+- **AI Medicine Analysis**: AI helps review medicine details and usage patterns for better tracking support
 - **QR-based Access**: Quick patient lookup through QR scanning
 - **Real-time Messaging**: Secure doctor-patient communication
 - **Symptom Tracking**: Comprehensive symptom logging with timestamps
