@@ -269,49 +269,12 @@ export default function PatientDashboard() {
           <View style={s.circle3} />
         </View>
 
-        {/* Stats */}
-        <View style={s.statsGrid}>
-          <View style={s.statHalf}>
-            <StatCard icon="medical-outline" value={String(dashboard?.activeMedicines ?? 0)} label={t('patient.stats.medicines')} iconBg={colors.primarySoft} />
-          </View>
-          <View style={s.statHalf}>
-            <StatCard icon="checkmark-circle-outline" value={`${dashboard?.adherencePercent ?? 0}%`} label={t('patient.stats.adherence')} iconBg={colors.successSoft} valueColor={colors.success} iconColor={colors.success} />
-          </View>
-          <View style={s.statHalf}>
-            <StatCard icon="folder-outline" value={String(dashboard?.recentRecordsCount ?? 0)} label={t('patient.stats.records7d')} iconBg={colors.tealSoft} valueColor={colors.teal} iconColor={colors.teal} />
-          </View>
-          <View style={s.statHalf}>
-            <StatCard icon="notifications-outline" value={String(dashboard?.unreadNotifications ?? 0)} label={t('patient.stats.alerts')} iconBg={colors.accentSoft} valueColor={colors.accent} iconColor={colors.accent} />
-          </View>
-        </View>
-
-        {/* Today's Medications */}
-        <Card variant="elevated" glowColor={colors.teal} accentColor={colors.teal}>
-          <CardHeader title={t('patient.section.todaysMeds')} right={
-            <TouchableOpacity onPress={() => router.push('/screens/Medicines')}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>{t('common.viewAll')}</Text>
-                <Ionicons name="chevron-forward" size={14} color={colors.primary} />
-              </View>
-            </TouchableOpacity>
-          }/>
-          <View style={{ padding: 16, gap: 2 }}>
-            {loading ? (
-              <Text style={{ color: colors.textMuted, textAlign: 'center', paddingVertical: 20 }}>{t('common.loading')}</Text>
-            ) : dueDoses.length === 0 ? (
-              <Text style={{ color: colors.textMuted, textAlign: 'center', paddingVertical: 20 }}>
-                {t('patient.empty.noMedsToday')}
-              </Text>
-            ) : (
-              dueDoses.map((med, idx) => <MedRow key={`${med.medicineId}-${med.slot}-${idx}`} med={med} onMarkTaken={handleMarkTaken} />)
-            )}
-          </View>
-        </Card>
-
         {/* Quick Actions */}
         <View style={s.qaGrid}>
           {quickActions.map(a => <QuickActionItem key={String(a.route)} {...a} />)}
         </View>
+
+
 
         {/* Score + Streak */}
         <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
@@ -328,12 +291,12 @@ export default function PatientDashboard() {
             <Text style={s.scoreVal}>
               {dashboard?.adherencePercent ?? 0}<Text style={s.scoreMax}>/100</Text>
             </Text>
-            <ProgressBar value={dashboard?.adherencePercent ?? 0} color="rgba(255,255,255,0.9)" height={6} style={{ marginVertical: 8 }} />
+            <ProgressBar value={dashboard?.adherencePercent ?? 0} color="rgba(255,255,255,0.9)" height={6} style={{ marginVertical: 8 , }} />
             <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>
               {dashboard && dashboard.adherencePercent >= 80 ? t('patient.score.excellent') : dashboard && dashboard.adherencePercent >= 50 ? t('patient.score.good') : t('patient.score.improving')}
             </Text>
           </View>
-          <View style={[s.scoreCard, { 
+          <View style={[s.scoreCard, {
             backgroundColor: colors.accent,
             shadowColor: colors.accent,
             shadowOpacity: 0.4,
@@ -379,48 +342,6 @@ export default function PatientDashboard() {
           </View>
         </Card>
 
-        {/* Recent Reports */}
-        <Card variant="elevated" glowColor={colors.teal}>
-          <CardHeader 
-            title={t('patient.section.recentReports')}
-            icon="document-text-outline"
-            right={
-              <TouchableOpacity onPress={() => router.push('/screens/Reports')}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <Text style={{ color: colors.teal, fontSize: 12, fontWeight: '700' }}>{t('common.viewAll')}</Text>
-                  <Ionicons name="chevron-forward" size={14} color={colors.teal} />
-                </View>
-              </TouchableOpacity>
-            }
-          />
-          <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
-            {recentReports.length === 0 ? (
-              <Text style={{ color: colors.textMuted, textAlign: 'center', paddingVertical: 20 }}>
-                {t('patient.empty.noReports')}
-              </Text>
-            ) : (
-              recentReports.map((r, i) => (
-                <TouchableOpacity 
-                  key={r._id} 
-                  style={[s.reportRow, i < recentReports.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.borderSoft }]}
-                  activeOpacity={0.7}
-                >
-                  <IconBox 
-                    icon={getReportIcon(r.reportType)} 
-                    color={colors.teal} 
-                    bg={colors.tealSoft}
-                    size={42}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textPrimary }}>{r.reportType}</Text>
-                    <Text style={{ fontSize: 12, color: colors.textFaint }}>{formatReportDate(r.createdAt)}</Text>
-                  </View>
-                  <Badge label={t('common.view')} type="teal" />
-                </TouchableOpacity>
-              ))
-            )}
-          </View>
-        </Card>
       </ScrollView>
     </BottomNavLayout>
   );

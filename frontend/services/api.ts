@@ -237,11 +237,13 @@ const getMockResponse = (endpoint: string, requestBody?: string): { ok: boolean;
       ok: true,
       status: 200,
       data: {
-        summary: { total: 4, taken: 2, missed: 0, pending: 2, overdue: 0 },
+        summary: { total: 5, taken: 1, missed: 0, pending: 4, overdue: 0 },
         dueDoses: [
           { medicineId: '1', medicineName: 'Aspirin', dosage: '100mg', slot: 'Morning', scheduledTime: '08:00', status: 'taken', isOverdue: false },
           { medicineId: '2', medicineName: 'Metformin', dosage: '500mg', slot: 'Morning', scheduledTime: '08:00', status: 'pending', isOverdue: false },
-          { medicineId: '3', medicineName: 'Vitamin D', dosage: '1000 IU', slot: 'Evening', scheduledTime: '20:00', status: 'pending', isOverdue: false },
+          { medicineId: '2', medicineName: 'Metformin', dosage: '500mg', slot: 'Evening', scheduledTime: '20:00', status: 'pending', isOverdue: false },
+          { medicineId: '3', medicineName: 'Vitamin D', dosage: '1000 IU', slot: 'Morning', scheduledTime: '08:00', status: 'pending', isOverdue: false },
+          { medicineId: '4', medicineName: 'Amoxicillin', dosage: '250mg', slot: 'Afternoon', scheduledTime: '14:00', status: 'pending', isOverdue: false },
         ],
       },
     };
@@ -339,6 +341,16 @@ const getMockResponse = (endpoint: string, requestBody?: string): { ok: boolean;
             dosage: '1000 IU',
             frequency: 'Once daily',
             timeSlots: ['Morning'],
+            startDate: new Date().toISOString(),
+            isActive: true,
+          },
+          {
+            _id: '4',
+            name: 'Amoxicillin',
+            medicineName: 'Amoxicillin',
+            dosage: '250mg',
+            frequency: 'Three times daily',
+            timeSlots: ['Morning', 'Afternoon', 'Evening'],
             startDate: new Date().toISOString(),
             isActive: true,
           },
