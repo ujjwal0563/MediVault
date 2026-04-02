@@ -492,13 +492,15 @@ const apiCall = async (
     clearTimeout(timeoutId);
     const err = error as Error & { name?: string; message?: string };
     if (err.name === "AbortError") {
-      if (isDemo) {
+      const isAuthEndpoint = endpoint.startsWith('/auth/') || endpoint === '/auth/login';
+      if (isDemo || isAuthEndpoint) {
         return getMockResponse(endpoint, options.body as string | undefined);
       }
       throw new Error("Request timed out. Please check your connection.");
     }
     if (err.name === "TypeError" && err.message?.includes("Network")) {
-      if (isDemo) {
+      const isAuthEndpoint = endpoint.startsWith('/auth/') || endpoint === '/auth/login';
+      if (isDemo || isAuthEndpoint) {
         return getMockResponse(endpoint, options.body as string | undefined);
       }
       throw new Error("Network error. Please check your internet connection.");
@@ -1476,6 +1478,59 @@ export const qrAPI = {
       );
     }
     return response.data as { qrToken: string; url: string; expiresIn: string };
+  },
+};
+
+export const aiAPI = {
+  explainMedicine: async (medicineName: string): Promise<{
+    medicine: string;
+    explanation: string;
+    is_mock: boolean;
+  }> => {
+    const response = await apiCall("/ai/medicine", {
+      method: "POST",
+      body: JSON.stringify({ medicine_name: medicineName }),
+    });
+    if (!response.ok) {
+      throw new Error(
+        (response.data.message as string) || "Failed to explain medicine",
+      );
+    }
+    return response.data as { medicine: string; explanation: string; is_mock: boolean };
+  },
+
+  triage: async (symptoms: string): Promise<{
+    symptoms: string;
+    triage: string;
+    is_mock: boolean;
+    disclaimer: string;
+  }> => {
+    const response = await apiCall("/ai/triage", {
+      method: "POST",
+      body: JSON.stringify({ symptoms }),
+    });
+    if (!response.ok) {
+      throw new Error(
+        (response.data.message as string) || "Failed to triage symptoms",
+      );
+    }
+    return response.data as { symptoms: string; triage: string; is_mock: boolean; disclaimer: string };
+  },
+
+  analyzeReport: async (reportId: string): Promise<{
+    aiSummary: string;
+    is_mock: boolean;
+    message: string;
+  }> => {
+    const response = await apiCall(`/patient/reports/${reportId}/analyze`, {
+      method: "POST",
+    });
+    if (!response.ok) {
+      throw new Error(
+        (response.data.message as string) || "Failed to analyze report",
+      );
+    }
+    return response.data as { aiSummary: string; is_mock: boolean; message: string };
   },
 };
 

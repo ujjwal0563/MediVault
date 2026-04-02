@@ -23,8 +23,8 @@ const doctorTabs: TabItem[] = [
 const patientTabs: TabItem[] = [
   { label: 'Home', href: '/screens/PatientDashboard', icon: 'home-outline', activeIcon: 'home' },
   { label: 'Medicines', href: '/screens/Medicines', icon: 'medical-outline', activeIcon: 'medical' },
-  { label: 'Records', href: '/screens/Records', icon: 'folder-outline', activeIcon: 'folder' },
-  { label: 'Reports', href: '/screens/Reports', icon: 'document-text-outline', activeIcon: 'document-text' },
+  { label: 'AI Analyze', href: '/screens/AIAnalyzer', icon: 'sparkles-outline', activeIcon: 'sparkles' },
+  { label: 'QR Code', href: '/screens/QRCode', icon: 'qr-code-outline', activeIcon: 'qr-code' },
   { label: 'Profile', href: '/screens/Profile', icon: 'person-outline', activeIcon: 'person' },
 ];
 

@@ -20,7 +20,9 @@ export default function RootLayout() {
             <Stack.Screen name="screens/Medicines" />
             <Stack.Screen name="screens/Reports" />
             <Stack.Screen name="screens/Symptoms" />
+            <Stack.Screen name="screens/AIAnalyzer" />
             <Stack.Screen name="screens/QRProfile" />
+            <Stack.Screen name="screens/QRCode" />
             <Stack.Screen name="screens/Notifications" />
             <Stack.Screen name="screens/Timeline" />
             <Stack.Screen name="screens/Profile" />

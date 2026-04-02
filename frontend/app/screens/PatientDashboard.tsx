@@ -194,7 +194,7 @@ export default function PatientDashboard() {
   };
 
   const quickActions: Array<{ icon: keyof typeof Ionicons.glyphMap; label: string; route: Href; bg: string; fg: string }> = [
-    { icon: 'fitness-outline', label: t('patient.qa.symptoms'), route: '/screens/Symptoms', bg: colors.primarySoft, fg: colors.primary },
+    { icon: 'sparkles-outline', label: 'AI Analyze', route: '/screens/AIAnalyzer', bg: colors.primarySoft, fg: colors.primary },
     { icon: 'document-text-outline', label: t('patient.qa.reports'), route: '/screens/Reports', bg: colors.tealSoft, fg: colors.teal },
     { icon: 'medical-outline', label: t('patient.qa.medicines'), route: '/screens/Medicines', bg: colors.successSoft, fg: colors.success },
     { icon: 'qr-code-outline', label: t('patient.qa.qrProfile'), route: '/screens/QRProfile', bg: colors.accentSoft, fg: colors.accent },
@@ -255,7 +255,7 @@ export default function PatientDashboard() {
                 style={[s.bannerBtn, { backgroundColor: 'rgba(255,255,255,0.95)' }]}>
                 <Text style={[s.bannerBtnText, { color: colors.teal }]}>{t('patient.banner.viewSchedule')}</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => router.push('/screens/Symptoms')} activeOpacity={0.8}
+              <TouchableOpacity onPress={() => router.push('/screens/AIAnalyzer')} activeOpacity={0.8}
                 style={[s.bannerBtn, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
                 <Text style={[s.bannerBtnText, { color: 'white' }]}>{t('patient.banner.report')}</Text>
               </TouchableOpacity>

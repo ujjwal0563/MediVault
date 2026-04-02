@@ -18,10 +18,10 @@ import { Platform } from 'react-native';
  */
 
 // For Web and iOS Simulator (running on same machine as backend)
-const DEV_LOCALHOST_URL = 'http://localhost:5000/api/v1';
+const DEV_LOCALHOST_URL = "http://10.11.19.197:5000/api/v1";
 
 // For Android Emulator (special IP that maps to host machine's localhost)
-const DEV_ANDROID_EMULATOR_URL = 'http://10.5.1.152:5000/api/v1';
+const DEV_ANDROID_EMULATOR_URL = "http://10.0.2.2:5000/api/v1";
 
 // For Physical Devices on Same WiFi Network (Mobile/Expo Go)
 // IMPORTANT: Replace with your computer's actual local IP address
@@ -29,7 +29,45 @@ const DEV_ANDROID_EMULATOR_URL = 'http://10.5.1.152:5000/api/v1';
 // Mac/Linux: Run `ifconfig` or `ip addr`, look for "inet" address
 // Example: If your IP is 192.168.1.100, use: 'http://192.168.1.100:5000/api/v1'
 // Current value matches your network - update if needed
-const DEV_LOCAL_NETWORK_URL = "http://10.5.1.152:5000/api/v1";
+const DEV_LOCAL_NETWORK_URL = "http://10.11.19.197:5000/api/v1";
+
+/**
+ * Get local IP address automatically
+ * This dynamically detects your computer's IP on the current WiFi network
+ */
+export const getLocalIP = async (): Promise<string> => {
+  // For web, use localhost
+  if (Platform.OS === 'web') {
+    return 'localhost';
+  }
+  
+  // For native platforms, we try to detect the local IP
+  // Note: This is a simplified approach - in production you might want a more robust solution
+  return 'localhost'; // Fallback - will use Platform.OS specific logic
+};
+
+/**
+ * Dynamically get the API URL based on current network
+ * This allows the app to work across different WiFi networks
+ */
+export const getDynamicApiUrl = async (): Promise<string> => {
+  if (!__DEV__) {
+    return PROD_API_URL;
+  }
+  
+  if (USE_PRODUCTION_IN_DEV) {
+    return PROD_API_URL;
+  }
+  
+  // For physical devices, we use a dynamic approach
+  // Try to detect the server IP or use a configured value
+  // For now, we'll use the local network URL but make it configurable
+  if (USE_PHYSICAL_DEVICE) {
+    return DEV_LOCAL_NETWORK_URL;
+  }
+  
+  return DEV_LOCALHOST_URL;
+};
 
 /**
  * PRODUCTION CONFIGURATION

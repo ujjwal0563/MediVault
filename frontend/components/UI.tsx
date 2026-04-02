@@ -4,7 +4,7 @@
  * Premium styling with soft shadows, gradients, and glowing effects
  */
 import React, { useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, TextInput, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 
@@ -156,6 +156,7 @@ interface ButtonProps {
   label: string;
   onPress: () => void;
   disabled?: boolean;
+  loading?: boolean;
   variant?: 'primary' | 'outline' | 'success' | 'danger';
   size?: 'sm' | 'md' | 'lg';
   style?: object;
@@ -164,10 +165,10 @@ interface ButtonProps {
   pill?: boolean;
 }
 
-export function Button({ label, onPress, disabled, variant = 'primary', size = 'md', style, icon, glow = true, pill = false }: ButtonProps) {
+export function Button({ label, onPress, disabled, loading, variant = 'primary', size = 'md', style, icon, glow = true, pill = false }: ButtonProps) {
   const { colors } = useTheme();
   const scale = useRef(new Animated.Value(1)).current;
-  const press   = () => !disabled && Animated.spring(scale, { toValue: 0.95, useNativeDriver: true, tension: 200 }).start();
+  const press   = () => !disabled && !loading && Animated.spring(scale, { toValue: 0.95, useNativeDriver: true, tension: 200 }).start();
   const release = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 200 }).start();
 
   const bg = variant === 'primary' ? colors.primary
@@ -187,23 +188,29 @@ export function Button({ label, onPress, disabled, variant = 'primary', size = '
   return (
     <Animated.View style={[{ transform: [{ scale }] }, style]}>
       <TouchableOpacity onPress={onPress} onPressIn={press} onPressOut={release}
-        disabled={disabled} activeOpacity={1}
+        disabled={disabled || loading} activeOpacity={1}
         style={[ui.btn, pad, {
           backgroundColor: bg, 
           borderColor,
           borderWidth: variant === 'outline' ? 1.5 : 0,
-          opacity: disabled ? 0.45 : 1,
+          opacity: disabled || loading ? 0.45 : 1,
           shadowColor: glowColor, 
-          shadowOpacity: glow && !disabled ? 0.35 : 0,
+          shadowOpacity: glow && !disabled && !loading ? 0.35 : 0,
           shadowOffset: { width: 0, height: 4 }, 
-          shadowRadius: glow && !disabled ? 12 : 0, 
-          elevation: glow && !disabled ? 6 : 0,
+          shadowRadius: glow && !disabled && !loading ? 12 : 0, 
+          elevation: glow && !disabled && !loading ? 6 : 0,
           borderRadius: pill ? 24 : 14,
         }]}>
-        {icon && <Ionicons name={icon} size={size === 'sm' ? 14 : 16} color={textColor} style={{ marginRight: 6 }} />}
-        <Text style={[ui.btnText, { color: textColor, fontSize: size === 'sm' ? 12 : size === 'lg' ? 15 : 13 }]}>
-          {label}
-        </Text>
+        {loading ? (
+          <ActivityIndicator size="small" color={textColor} />
+        ) : (
+          <>
+            {icon && <Ionicons name={icon} size={size === 'sm' ? 14 : 16} color={textColor} style={{ marginRight: 6 }} />}
+            <Text style={[ui.btnText, { color: textColor, fontSize: size === 'sm' ? 12 : size === 'lg' ? 15 : 13 }]}>
+              {label}
+            </Text>
+          </>
+        )}
       </TouchableOpacity>
     </Animated.View>
   );
