@@ -206,7 +206,6 @@ export default function PatientDashboard() {
     if (hour < 17) return t('patient.greeting.afternoon');
     return t('patient.greeting.evening');
   };
-
   const getDayName = (dateStr: string) => {
     const date = new Date(dateStr);
     return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()];
