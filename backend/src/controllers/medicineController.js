@@ -287,7 +287,9 @@ const getDueDoses = async (req, res, next) => {
 					continue;
 				}
 
-				if (scheduledDate < medicine.startDate) {
+				const medStartDay = new Date(medicine.startDate);
+				medStartDay.setHours(0, 0, 0, 0);
+				if (scheduledDate < medStartDay) {
 					continue;
 				}
 
@@ -318,6 +320,22 @@ const getDueDoses = async (req, res, next) => {
 		};
 
 		return res.status(200).json({ date: dayStart, summary, dueDoses });
+	} catch (error) {
+		return next(error);
+	}
+};
+
+const deleteMedicine = async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		if (!mongoose.Types.ObjectId.isValid(id)) {
+			return res.status(400).json({ message: "Invalid medicine ID." });
+		}
+		const medicine = await Medicine.findOneAndDelete({ _id: id, patientId: req.user.id });
+		if (!medicine) {
+			return res.status(404).json({ message: "Medicine not found." });
+		}
+		return res.status(200).json({ message: "Medicine deleted successfully." });
 	} catch (error) {
 		return next(error);
 	}
@@ -460,4 +478,5 @@ module.exports = {
 	getDueDoses,
 	getAdherenceSummary,
 	getWeeklyAdherenceTrend,
+	deleteMedicine,
 };

@@ -9,6 +9,7 @@ const {
 	getDueDoses,
 	getAdherenceSummary,
 	getWeeklyAdherenceTrend,
+	deleteMedicine,
 } = require("../controllers/medicineController");
 const {
 	validateAddMedicine,
@@ -28,5 +29,6 @@ router.post("/mark", validateMarkDoseStatus, markDoseStatus);
 router.get("/adherence/weekly", validateAdherenceQuery, getWeeklyAdherenceTrend);
 router.post("/:id/log", validateLogDose, logDose);
 router.get("/adherence", validateAdherenceQuery, getAdherenceSummary);
+router.delete("/:id", deleteMedicine);
 
 module.exports = router;

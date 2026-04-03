@@ -226,14 +226,14 @@ const getMockResponse = (endpoint: string, requestBody?: string): { ok: boolean;
       status: 200,
       data: {
         summary: {
-          activeMedicines: 5,
-          scheduledDosesToday: 4,
-          takenToday: 2,
+          activeMedicines: 0,
+          scheduledDosesToday: 0,
+          takenToday: 0,
           missedToday: 0,
-          pendingToday: 2,
-          adherencePercent: 75,
-          unreadNotifications: 3,
-          recentRecordsCount: 12,
+          pendingToday: 0,
+          adherencePercent: 0,
+          unreadNotifications: 0,
+          recentRecordsCount: 0,
         },
         recentSymptoms: [],
         recentReports: [],
@@ -245,14 +245,8 @@ const getMockResponse = (endpoint: string, requestBody?: string): { ok: boolean;
       ok: true,
       status: 200,
       data: {
-        summary: { total: 5, taken: 1, missed: 0, pending: 4, overdue: 0 },
-        dueDoses: [
-          { medicineId: '1', medicineName: 'Aspirin', dosage: '100mg', slot: 'Morning', scheduledTime: '08:00', status: 'taken', isOverdue: false },
-          { medicineId: '2', medicineName: 'Metformin', dosage: '500mg', slot: 'Morning', scheduledTime: '08:00', status: 'pending', isOverdue: false },
-          { medicineId: '2', medicineName: 'Metformin', dosage: '500mg', slot: 'Evening', scheduledTime: '20:00', status: 'pending', isOverdue: false },
-          { medicineId: '3', medicineName: 'Vitamin D', dosage: '1000 IU', slot: 'Morning', scheduledTime: '08:00', status: 'pending', isOverdue: false },
-          { medicineId: '4', medicineName: 'Amoxicillin', dosage: '250mg', slot: 'Afternoon', scheduledTime: '14:00', status: 'pending', isOverdue: false },
-        ],
+        summary: { total: 0, taken: 0, missed: 0, pending: 0, overdue: 0 },
+        dueDoses: [],
       },
     };
   }
@@ -320,63 +314,14 @@ const getMockResponse = (endpoint: string, requestBody?: string): { ok: boolean;
     return {
       ok: true,
       status: 200,
-      data: {
-        medicines: [
-          {
-            _id: '1',
-            name: 'Aspirin',
-            medicineName: 'Aspirin',
-            dosage: '100mg',
-            frequency: 'Once daily',
-            timeSlots: ['Morning'],
-            startDate: new Date().toISOString(),
-            isActive: true,
-          },
-          {
-            _id: '2',
-            name: 'Metformin',
-            medicineName: 'Metformin',
-            dosage: '500mg',
-            frequency: 'Twice daily',
-            timeSlots: ['Morning', 'Evening'],
-            startDate: new Date().toISOString(),
-            isActive: true,
-          },
-          {
-            _id: '3',
-            name: 'Vitamin D',
-            medicineName: 'Vitamin D',
-            dosage: '1000 IU',
-            frequency: 'Once daily',
-            timeSlots: ['Morning'],
-            startDate: new Date().toISOString(),
-            isActive: true,
-          },
-          {
-            _id: '4',
-            name: 'Amoxicillin',
-            medicineName: 'Amoxicillin',
-            dosage: '250mg',
-            frequency: 'Three times daily',
-            timeSlots: ['Morning', 'Afternoon', 'Evening'],
-            startDate: new Date().toISOString(),
-            isActive: true,
-          },
-        ],
-      },
+      data: { medicines: [] },
     };
   }
   if (endpoint.startsWith('/medicine/adherence')) {
     return {
       ok: true,
       status: 200,
-      data: {
-        summary: [
-          { medicineId: '1', total: 30, taken: 25, missed: 5, adherencePercent: 83 },
-          { medicineId: '2', total: 30, taken: 28, missed: 2, adherencePercent: 93 },
-          { medicineId: '3', total: 30, taken: 22, missed: 8, adherencePercent: 73 },
-        ],
-      },
+      data: { summary: [], trend: [] },
     };
   }
   
@@ -700,22 +645,7 @@ export const patientAPI = {
         recentReports: Report[];
       };
     } catch (error) {
-      // Return mock data when backend is not available
-      console.log("Using mock data for patient dashboard");
-      return {
-        summary: {
-          activeMedicines: 5,
-          scheduledDosesToday: 4,
-          takenToday: 2,
-          missedToday: 0,
-          pendingToday: 2,
-          adherencePercent: 75,
-          unreadNotifications: 3,
-          recentRecordsCount: 12,
-        },
-        recentSymptoms: [],
-        recentReports: [],
-      };
+      throw error;
     }
   },
 
@@ -1158,47 +1088,13 @@ export const doctorAPI = {
 
 export const medicineAPI = {
   getMedicines: async (): Promise<Medicine[]> => {
-    try {
-      const response = await apiCall("/medicine");
-      if (!response.ok) {
-        throw new Error(
-          (response.data.message as string) || "Failed to get medicines",
-        );
-      }
-      return response.data.medicines as Medicine[];
-    } catch (error) {
-      // Return mock data when backend is not available
-      console.log("Using mock data for medicines");
-      return [
-        {
-          _id: "1",
-          name: "Aspirin",
-          medicineName: "Aspirin",
-          dosage: "100mg",
-          frequency: "Once daily",
-          timeSlots: ["Morning"],
-          startDate: new Date().toISOString(),
-        },
-        {
-          _id: "2",
-          name: "Metformin",
-          medicineName: "Metformin",
-          dosage: "500mg",
-          frequency: "Twice daily",
-          timeSlots: ["Morning", "Evening"],
-          startDate: new Date().toISOString(),
-        },
-        {
-          _id: "3",
-          name: "Vitamin D",
-          medicineName: "Vitamin D",
-          dosage: "1000 IU",
-          frequency: "Once daily",
-          timeSlots: ["Morning"],
-          startDate: new Date().toISOString(),
-        },
-      ] as any;
+    const response = await apiCall("/medicine");
+    if (!response.ok) {
+      throw new Error(
+        (response.data.message as string) || "Failed to get medicines",
+      );
     }
+    return response.data.medicines as Medicine[];
   },
 
   addMedicine: async (data: {
@@ -1326,6 +1222,17 @@ export const medicineAPI = {
         adherencePercent: number;
       }>;
     };
+  },
+
+  deleteMedicine: async (medicineId: string): Promise<void> => {
+    const response = await apiCall(`/medicine/${medicineId}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      throw new Error(
+        (response.data.message as string) || "Failed to delete medicine",
+      );
+    }
   },
 };
 

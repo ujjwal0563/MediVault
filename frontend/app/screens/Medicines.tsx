@@ -139,6 +139,29 @@ export default function MedicinesScreen() {
     }
   };
 
+  const handleDeleteMedicine = async (medicineId: string) => {
+    Alert.alert(
+      t('med.alert.deleteTitle') || 'Delete Medicine',
+      t('med.alert.deleteConfirm') || 'Remove this medicine and all its scheduled doses?',
+      [
+        { text: t('common.cancel') || 'Cancel', style: 'cancel' },
+        {
+          text: t('common.delete') || 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await medicineAPI.deleteMedicine(medicineId);
+              setMedicines(prev => prev.filter(m => m._id !== medicineId));
+              setDueDoses(prev => prev.filter(d => d.medicineId !== medicineId));
+            } catch (err) {
+              Alert.alert(t('med.alert.errorTitle'), err instanceof Error ? err.message : 'Failed to delete medicine');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const addTimeSlot = () => {
     if (newTimeSlot && !newMed.timeSlots.includes(newTimeSlot)) {
       setNewMed(prev => ({ ...prev, timeSlots: [...prev.timeSlots, newTimeSlot].sort() }));
@@ -305,6 +328,13 @@ export default function MedicinesScreen() {
                             </Text>
                           </View>
                         </View>
+                        <TouchableOpacity
+                          onPress={() => handleDeleteMedicine(med._id)}
+                          activeOpacity={0.7}
+                          style={{ padding: 6, marginLeft: 8 }}
+                        >
+                          <Ionicons name="close-circle" size={22} color={colors.danger} />
+                        </TouchableOpacity>
                       </View>
                     );
                   })

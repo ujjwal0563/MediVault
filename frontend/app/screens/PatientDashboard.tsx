@@ -197,7 +197,7 @@ export default function PatientDashboard() {
     { icon: 'sparkles-outline', label: 'AI Analyze', route: '/screens/AIAnalyzer', bg: colors.primarySoft, fg: colors.primary },
     { icon: 'document-text-outline', label: t('patient.qa.reports'), route: '/screens/Reports', bg: colors.tealSoft, fg: colors.teal },
     { icon: 'medical-outline', label: t('patient.qa.medicines'), route: '/screens/Medicines', bg: colors.successSoft, fg: colors.success },
-    { icon: 'qr-code-outline', label: t('patient.qa.qrProfile'), route: '/screens/QRProfile', bg: colors.accentSoft, fg: colors.accent },
+    { icon: 'qr-code-outline', label: t('patient.qa.qrProfile'), route: '/screens/QRCode', bg: colors.accentSoft, fg: colors.accent },
   ];
 
   const getGreeting = () => {

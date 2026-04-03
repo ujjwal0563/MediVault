@@ -106,7 +106,7 @@ const getPatientDashboard = async (req, res, next) => {
     const pendingToday = Math.max(scheduledToday - takenToday - missedToday, 0);
 
     const adherencePercent = scheduledToday
-      ? Number(((takenToday / scheduledToday) * 100).toFixed(2))
+      ? Math.min(100, Number(((takenToday / scheduledToday) * 100).toFixed(2)))
       : 0;
 
     return res.status(200).json({

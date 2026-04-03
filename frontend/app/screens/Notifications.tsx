@@ -72,6 +72,16 @@ export default function NotificationsScreen() {
     }
   };
 
+  const handleDeleteNotification = async (id: string) => {
+    try {
+      await notificationAPI.deleteNotification(id);
+      setNotifications(prev => prev.filter(n => n._id !== id));
+      removeNotif(role, id);
+    } catch (error: any) {
+      Alert.alert(t('common.error'), error.message || 'Failed to delete notification');
+    }
+  };
+
   const isDoctor = role === 'doctor';
   const accent   = isDoctor ? colors.primary : colors.teal;
 
@@ -244,7 +254,7 @@ export default function NotificationsScreen() {
                         <Ionicons name="checkmark" size={16} color={colors.success} />
                       </TouchableOpacity>
                     )}
-                    <TouchableOpacity onPress={() => removeNotif(role, n._id)}
+                    <TouchableOpacity onPress={() => handleDeleteNotification(n._id)}
                       style={[s.actionBtn, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
                       <Ionicons name="close" size={14} color={colors.textFaint} />
                     </TouchableOpacity>

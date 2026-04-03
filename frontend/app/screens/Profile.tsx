@@ -10,7 +10,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useBadges } from '../../context/BadgeContext';
 import { Card, CardHeader, Button } from '../../components/UI';
-import { authAPI, User } from '../../services/api';
+import { authAPI, User, patientAPI, medicineAPI } from '../../services/api';
 
 type Tab = 'profile' | 'health' | 'notifications' | 'security' | 'alerts';
 
@@ -323,11 +323,18 @@ function PatientProfile() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  // Profile stats
+  const [profileStats, setProfileStats] = useState({ health: 0, adherence: 0, medicines: 0 });
+
   const accent = colors.teal;
 
   const loadUser = async () => {
     try {
-      const userData = await authAPI.me();
+      const [userData, dashboardRes, adherenceRes] = await Promise.all([
+        authAPI.me(),
+        patientAPI.getDashboard().catch(() => null),
+        medicineAPI.getAdherenceSummary().catch(() => [] as any[]),
+      ]);
       setUser(userData);
       setBloodType(userData.bloodType || 'O+');
       setFirstName(userData.firstName || '');
@@ -340,6 +347,15 @@ function PatientProfile() {
       setWeight(userData.weight?.toString() || '');
       setEmergencyName(userData.emergencyContact?.name || '');
       setEmergencyPhone(userData.emergencyContact?.phone || '');
+
+      if (dashboardRes) {
+        const pct = Math.min(100, dashboardRes.summary.adherencePercent ?? 0);
+        setProfileStats({
+          health: Math.round(pct),
+          adherence: Math.round(pct),
+          medicines: dashboardRes.summary.activeMedicines ?? 0,
+        });
+      }
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to load user');
     } finally {
@@ -500,10 +516,10 @@ function PatientProfile() {
             </View>
             <View style={ph.statsRow}>
               {([
-                { icon: 'heart' as const, value: '--', label: t('profile.stats.health') },
-                { icon: 'checkmark-circle' as const, value: '--%', label: t('profile.stats.adherence') },
-                { icon: 'flame' as const, value: '0d', label: t('profile.stats.streak') },
-                { icon: 'medical' as const, value: '0', label: t('profile.stats.medicines') },
+                { icon: 'heart' as const, value: `${profileStats.health}`, label: t('profile.stats.health') },
+                { icon: 'checkmark-circle' as const, value: `${profileStats.adherence}%`, label: t('profile.stats.adherence') },
+                { icon: 'flame' as const, value: `0d`, label: t('profile.stats.streak') },
+                { icon: 'medical' as const, value: `${profileStats.medicines}`, label: t('profile.stats.medicines') },
               ] as { icon: keyof typeof Ionicons.glyphMap; value: string; label: string }[]).map(({ icon, value, label }) => (
                 <View key={label} style={ph.statItem}>
                   <Ionicons name={icon} size={18} color="white" />

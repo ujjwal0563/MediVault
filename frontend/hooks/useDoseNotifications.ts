@@ -1,28 +1,37 @@
 import { useEffect, useRef } from 'react';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { Platform } from 'react-native';
+import { Platform, LogBox } from 'react-native';
+import Constants from 'expo-constants';
 import { medicineAPI, Medicine } from '../services/api';
 
-// How the notification appears when the app is in the foreground
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+// Suppress the Expo Go SDK 53 push notification warning — we handle this gracefully
+LogBox.ignoreLogs([
+  'expo-notifications: Android Push notifications (remote notifications) functionality provided by expo-notifications was removed from Expo Go',
+]);
 
-const REMINDER_OFFSETS_MIN = [10, 2];
+// True when running inside Expo Go (ownership === 'expo')
+const isExpoGo = Constants.appOwnership === 'expo';
 
-/** Request permission and return whether it was granted */
+// Set how notifications appear in foreground (dev builds / production only)
+if (!isExpoGo) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+}
+
+const REMINDER_OFFSETS_MIN = [10, 2]; // fire before dose time
+const MISSED_DELAY_MIN = 30;          // fire this many minutes after dose time if not taken
+
+/** Request permission — returns false in Expo Go or simulators */
 async function requestPermissions(): Promise<boolean> {
-  if (!Device.isDevice) {
-    // Simulators can't receive notifications — skip silently
-    return false;
-  }
+  if (isExpoGo || !Device.isDevice) return false;
 
   const { status: existing } = await Notifications.getPermissionsAsync();
   if (existing === 'granted') return true;
@@ -31,27 +40,25 @@ async function requestPermissions(): Promise<boolean> {
   return status === 'granted';
 }
 
-/** Cancel all previously scheduled dose reminders before rescheduling */
+/** Cancel all previously scheduled dose reminders */
 async function cancelDoseReminders() {
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-  const doseReminders = scheduled.filter(
-    (n) => n.content.data?.type === 'dose_reminder'
-  );
   await Promise.all(
-    doseReminders.map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier))
+    scheduled
+      .filter(n => n.content.data?.type === 'dose_reminder' || n.content.data?.type === 'dose_missed')
+      .map(n => Notifications.cancelScheduledNotificationAsync(n.identifier))
   );
 }
 
 /** Schedule a local notification at a specific Date */
-async function scheduleAt(date: Date, title: string, body: string, data: Record<string, unknown>) {
+async function scheduleAt(
+  date: Date,
+  title: string,
+  body: string,
+  data: Record<string, unknown>
+) {
   await Notifications.scheduleNotificationAsync({
-    content: {
-      title,
-      body,
-      sound: true,   // uses default system sound
-      vibrate: [0, 250, 250, 250],
-      data: { ...data, type: 'dose_reminder' },
-    },
+    content: { title, body, sound: true, vibrate: [0, 250, 250, 250], data },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
       date,
@@ -59,7 +66,7 @@ async function scheduleAt(date: Date, title: string, body: string, data: Record<
   });
 }
 
-/** Build today's Date for a HH:MM slot string */
+/** Parse HH:MM slot string into a Date for today */
 function slotToDate(slot: string): Date | null {
   const match = slot.trim().match(/^(\d{1,2}):(\d{2})$/);
   if (!match) return null;
@@ -74,8 +81,8 @@ export function useDoseNotifications(isLoggedIn: boolean) {
   useEffect(() => {
     if (!isLoggedIn) return;
 
-    // Set up Android notification channel
-    if (Platform.OS === 'android') {
+    // Android notification channel (dev builds / production only)
+    if (!isExpoGo && Platform.OS === 'android') {
       Notifications.setNotificationChannelAsync('dose-reminders', {
         name: 'Dose Reminders',
         importance: Notifications.AndroidImportance.HIGH,
@@ -107,21 +114,28 @@ export function useDoseNotifications(isLoggedIn: boolean) {
           const doseTime = slotToDate(slot);
           if (!doseTime) continue;
 
+          // Upcoming reminders (10 min and 2 min before)
           for (const offsetMin of REMINDER_OFFSETS_MIN) {
             const fireAt = new Date(doseTime.getTime() - offsetMin * 60 * 1000);
-            if (fireAt <= now) continue; // already passed
+            if (fireAt <= now) continue;
 
             const label = offsetMin === 10 ? '10 minutes' : '2 minutes';
             await scheduleAt(
               fireAt,
               '💊 Upcoming Dose',
               `${med.name} (${med.dosage}) is due in ${label}.`,
-              {
-                medicineId: med._id,
-                medicineName: med.name,
-                slot,
-                minutesBefore: offsetMin,
-              }
+              { type: 'dose_reminder', medicineId: med._id, medicineName: med.name, slot }
+            );
+          }
+
+          // Missed dose alert (MISSED_DELAY_MIN after dose time)
+          const missedAt = new Date(doseTime.getTime() + MISSED_DELAY_MIN * 60 * 1000);
+          if (missedAt > now) {
+            await scheduleAt(
+              missedAt,
+              '⚠️ Missed Dose',
+              `You missed your ${med.name} (${med.dosage}) dose scheduled at ${slot}.`,
+              { type: 'dose_missed', medicineId: med._id, medicineName: med.name, slot }
             );
           }
         }
