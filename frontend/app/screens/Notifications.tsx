@@ -23,6 +23,7 @@ export default function NotificationsScreen() {
     clearNotifs,
     doctorNotifs, patientNotifs,
     markOneNotif, markAllNotifs, removeNotif,
+    refreshNotifications,
   } = useBadges();
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -34,6 +35,8 @@ export default function NotificationsScreen() {
     try {
       const data = await notificationAPI.getNotifications();
       setNotifications(data.notifications);
+      // Refresh badge count after loading notifications
+      await refreshNotifications();
     } catch (error: any) {
       Alert.alert(t('common.error'), error.message || t('notif.error.loadFailed'));
     } finally {
@@ -43,6 +46,7 @@ export default function NotificationsScreen() {
 
   useEffect(() => {
     loadNotifications();
+    // Clear badge immediately when user opens notifications screen
     clearNotifs();
   }, []);
 

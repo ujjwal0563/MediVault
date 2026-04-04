@@ -8,6 +8,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { patientAPI, medicineAPI, Medicine } from '../../services/api';
 import { MedicineCalendar } from '../../components/MedicineCalendar';
+import { useNotifications } from '../../context/NotificationContext';
 
 interface DashboardData {
   activeMedicines: number;
@@ -120,6 +121,7 @@ export default function PatientDashboard() {
   const router = useRouter();
   const { colors, isDark, userName } = useTheme();
   const { t } = useLanguage();
+  const { startPolling, stopPolling, showToast } = useNotifications();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -164,7 +166,14 @@ export default function PatientDashboard() {
 
   useEffect(() => {
     fetchDashboard();
-  }, [fetchDashboard]);
+    // Start polling for notifications
+    startPolling();
+    
+    return () => {
+      // Stop polling when component unmounts
+      stopPolling();
+    };
+  }, [fetchDashboard, startPolling, stopPolling]);
 
   const onRefresh = useCallback(() => {
     fetchDashboard(true);
@@ -242,10 +251,6 @@ export default function PatientDashboard() {
                 style={[s.bannerBtn, { backgroundColor: 'rgba(255,255,255,0.95)' }]}>
                 <Text style={[s.bannerBtnText, { color: colors.teal }]}>{t('patient.banner.viewSchedule')}</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => router.push('/screens/AIAnalyzer')} activeOpacity={0.8}
-                style={[s.bannerBtn, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                <Text style={[s.bannerBtnText, { color: 'white' }]}>{t('patient.banner.report')}</Text>
-              </TouchableOpacity>
             </View>
           </View>
           <View style={s.bannerIcon}>
@@ -301,7 +306,7 @@ export default function PatientDashboard() {
         {/* Medicine Calendar */}
         <MedicineCalendar
           medicines={medicines}
-          showSummary={false}
+          showSummary={true}
           onDatePress={(date) => {
             console.log('Selected date:', date.dateString);
           }}
