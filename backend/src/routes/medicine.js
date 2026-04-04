@@ -9,6 +9,9 @@ const {
 	getDueDoses,
 	getAdherenceSummary,
 	getWeeklyAdherenceTrend,
+	getMonthlyAdherence,
+	getStreakData,
+	getMonthlyStreakHistory,
 	deleteMedicine,
 	updateMedicine,
 } = require("../controllers/medicineController");
@@ -28,6 +31,9 @@ router.get("/", getMyMedicines);
 router.get("/due", getDueDoses);
 router.post("/mark", validateMarkDoseStatus, markDoseStatus);
 router.get("/adherence/weekly", validateAdherenceQuery, getWeeklyAdherenceTrend);
+router.get("/adherence/monthly", getMonthlyAdherence);
+router.get("/streak-data", getStreakData);
+router.get("/streak-history", getMonthlyStreakHistory);
 router.post("/:id/log", validateLogDose, logDose);
 router.get("/adherence", validateAdherenceQuery, getAdherenceSummary);
 router.delete("/:id", deleteMedicine);

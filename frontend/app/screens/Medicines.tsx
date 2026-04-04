@@ -9,6 +9,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import BottomNavLayout from '@/components/BottomNavLayout';
 import { StatCard, Card, CardHeader, Badge, Button, ProgressBar, IconBox } from '../../components/UI';
 import Stepper from '../../components/Stepper';
+import { MedicineCalendar } from '../../components/MedicineCalendar';
 import { medicineAPI, Medicine } from '../../services/api';
 import { calculateEndDate, getDaysRemaining } from '../../utils/calculateEndDate';
 
@@ -387,6 +388,15 @@ export default function MedicinesScreen() {
                 </View>
               </View>
             </Card>
+
+            {/* Medicine Calendar */}
+            <MedicineCalendar 
+              medicines={medicines}
+              onDatePress={(date) => {
+                // Handle date press - could show doses for that date
+                console.log('Selected date:', date.dateString);
+              }}
+            />
 
             {/* Medicines List */}
             <Card variant="elevated" glowColor={colors.teal}>

@@ -121,7 +121,7 @@ export default function QRCodeScreen() {
       headerRight={
         <Button
           label=""
-          variant="ghost"
+          variant="outline"
           size="sm"
           icon="refresh"
           onPress={regenerateQR}

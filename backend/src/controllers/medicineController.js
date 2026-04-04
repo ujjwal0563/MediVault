@@ -4,6 +4,25 @@ const DoseLog = require("../models/DoseLog");
 const Notification = require("../models/Notification");
 const streakService = require("../services/streakService");
 
+// Course color palette for range bands
+const COURSE_COLORS = [
+	'#0D9488', // teal
+	'#1A4FBA', // blue
+	'#F97316', // orange
+	'#DC2626', // red
+	'#7C3AED', // purple
+	'#059669', // emerald
+	'#DB2777', // pink
+	'#EA580C', // orange-600
+	'#2563EB', // blue-600
+	'#16A34A', // green-600
+];
+
+// Helper function to assign deterministic colors to medicine courses
+const assignCourseColor = (index) => {
+	return COURSE_COLORS[index % COURSE_COLORS.length];
+};
+
 const parseScheduledTime = (value) => {
 	if (!value) {
 		return null;
@@ -41,7 +60,9 @@ const buildTimeSlotDate = (baseDate, slot) => {
 
 const upsertDoseLog = async ({ patientId, medicineId, status, scheduledTime }) => {
 	const normalizedScheduledTime = parseScheduledTime(scheduledTime);
+	console.log('[UPSERT DEBUG] scheduledTime input:', scheduledTime, '-> normalized:', normalizedScheduledTime);
 	if (!normalizedScheduledTime) {
+		console.log('[UPSERT DEBUG] ERROR: scheduledTime is invalid, returning error');
 		return { error: "scheduledTime must be a valid datetime." };
 	}
 
@@ -146,7 +167,13 @@ const getMyMedicines = async (req, res, next) => {
 			isActive: true,
 		}).sort({ createdAt: -1 });
 
-		return res.status(200).json({ medicines });
+		// Add color assignment for course range bands
+		const medicinesWithColors = medicines.map((medicine, index) => ({
+			...medicine.toObject(),
+			courseColor: assignCourseColor(index)
+		}));
+
+		return res.status(200).json({ medicines: medicinesWithColors });
 	} catch (error) {
 		return next(error);
 	}
@@ -198,6 +225,8 @@ const logDose = async (req, res, next) => {
 const markDoseStatus = async (req, res, next) => {
 	try {
 		const { medicineId, status, scheduledTime } = req.body;
+		console.log('[MARK DOSE DEBUG] body:', { medicineId, status, scheduledTime });
+		console.log('[MARK DOSE DEBUG] patientId:', req.user.id);
 
 		if (!medicineId || !mongoose.Types.ObjectId.isValid(medicineId)) {
 			return res.status(400).json({ message: "Valid medicineId is required." });
@@ -499,6 +528,237 @@ const getWeeklyAdherenceTrend = async (req, res, next) => {
 	}
 };
 
+const getMonthlyAdherence = async (req, res, next) => {
+	try {
+		const patientId = req.user.id;
+		const { year, month } = req.query;
+
+		// Validate required parameters
+		if (!year || !month) {
+			return res.status(400).json({ message: "year and month parameters are required" });
+		}
+
+		const yearNum = parseInt(year);
+		const monthNum = parseInt(month);
+
+		// Validate year and month values
+		if (isNaN(yearNum) || isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
+			return res.status(400).json({ message: "Invalid year or month value" });
+		}
+
+		// Calculate month boundaries
+		const monthStart = new Date(yearNum, monthNum - 1, 1);
+		const monthEnd = new Date(yearNum, monthNum, 0, 23, 59, 59, 999);
+		const today = new Date();
+		
+		// For current month, only count doses up to today
+		const isFutureMonth = yearNum > today.getFullYear() || 
+			(yearNum === today.getFullYear() && monthNum > today.getMonth() + 1);
+		
+		const effectiveEnd = (yearNum === today.getFullYear() && monthNum === today.getMonth() + 1) 
+			? new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999)
+			: monthEnd;
+
+		// If it's a future month, return empty data
+		if (isFutureMonth) {
+			return res.status(200).json({
+				year: yearNum,
+				month: monthNum,
+				totalScheduled: 0,
+				takenDoses: 0,
+				missedDoses: 0,
+				adherencePercent: 0,
+				isFutureMonth: true,
+				weeklyBreakdown: []
+			});
+		}
+
+		// Aggregation pipeline for monthly adherence
+		const monthlyStats = await DoseLog.aggregate([
+			{
+				$match: {
+					patientId: new mongoose.Types.ObjectId(patientId),
+					scheduledTime: { $gte: monthStart, $lte: effectiveEnd }
+				}
+			},
+			{
+				$group: {
+					_id: null,
+					totalScheduled: { $sum: 1 },
+					takenDoses: { 
+						$sum: { $cond: [{ $eq: ['$status', 'taken'] }, 1, 0] }
+					},
+					missedDoses: { 
+						$sum: { $cond: [{ $eq: ['$status', 'missed'] }, 1, 0] }
+					}
+				}
+			},
+			{
+				$project: {
+					_id: 0,
+					totalScheduled: 1,
+					takenDoses: 1,
+					missedDoses: 1,
+					adherencePercent: {
+						$round: [
+							{
+								$multiply: [
+									{ $cond: [
+										{ $eq: ['$totalScheduled', 0] },
+										0,
+										{ $divide: ['$takenDoses', '$totalScheduled'] }
+									]},
+									100
+								]
+							},
+							1
+						]
+					}
+				}
+			}
+		]);
+
+		// Weekly breakdown aggregation
+		const weeklyBreakdown = await DoseLog.aggregate([
+			{
+				$match: {
+					patientId: new mongoose.Types.ObjectId(patientId),
+					scheduledTime: { $gte: monthStart, $lte: effectiveEnd }
+				}
+			},
+			{
+				$group: {
+					_id: {
+						week: { $week: '$scheduledTime' },
+						year: { $year: '$scheduledTime' }
+					},
+					totalDoses: { $sum: 1 },
+					takenDoses: { 
+						$sum: { $cond: [{ $eq: ['$status', 'taken'] }, 1, 0] }
+					},
+					weekStart: { $min: '$scheduledTime' },
+					weekEnd: { $max: '$scheduledTime' }
+				}
+			},
+			{
+				$project: {
+					_id: 0,
+					weekStart: { $dateToString: { format: '%Y-%m-%d', date: '$weekStart' } },
+					weekEnd: { $dateToString: { format: '%Y-%m-%d', date: '$weekEnd' } },
+					totalDoses: 1,
+					takenDoses: 1,
+					adherencePercent: {
+						$round: [
+							{
+								$multiply: [
+									{ $cond: [
+										{ $eq: ['$totalDoses', 0] },
+										0,
+										{ $divide: ['$takenDoses', '$totalDoses'] }
+									]},
+									100
+								]
+							},
+							1
+						]
+					}
+				}
+			},
+			{ $sort: { weekStart: 1 } }
+		]);
+
+		// Get the first result or default values
+		const stats = monthlyStats[0] || {
+			totalScheduled: 0,
+			takenDoses: 0,
+			missedDoses: 0,
+			adherencePercent: 0
+		};
+
+		return res.status(200).json({
+			year: yearNum,
+			month: monthNum,
+			...stats,
+			isFutureMonth: false,
+			weeklyBreakdown
+		});
+
+	} catch (error) {
+		return next(error);
+	}
+};
+
+const getStreakData = async (req, res, next) => {
+	try {
+		const patientId = req.user.id;
+		const { fromDate } = req.query;
+		
+		const streakData = await streakService.calculateAdherenceStreak(
+			patientId, 
+			fromDate ? new Date(fromDate) : null
+		);
+		
+		return res.status(200).json(streakData);
+	} catch (error) {
+		return next(error);
+	}
+};
+
+const getMonthlyStreakHistory = async (req, res, next) => {
+	try {
+		const patientId = req.user.id;
+		const { year, month } = req.query;
+		
+		// Validate required parameters
+		if (!year || !month) {
+			return res.status(400).json({ message: "year and month parameters are required" });
+		}
+		
+		const yearNum = parseInt(year);
+		const monthNum = parseInt(month);
+		
+		// Validate year and month values
+		if (isNaN(yearNum) || isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
+			return res.status(400).json({ message: "Invalid year or month value" });
+		}
+		
+		// Calculate month boundaries
+		const monthStart = new Date(yearNum, monthNum - 1, 1);
+		const monthEnd = new Date(yearNum, monthNum, 0, 23, 59, 59, 999);
+		
+		// Get daily adherence data for the month
+		const dailyAdherence = await streakService.calculateDailyAdherence(
+			patientId, 
+			monthStart, 
+			monthEnd
+		);
+		
+		// Get overall streak data
+		const streakData = await streakService.calculateAdherenceStreak(patientId);
+		
+		// Filter streak history for visible month
+		const monthlyStreaks = streakData.streakHistory.filter(streak => {
+			const streakStart = new Date(streak.startDate);
+			const streakEnd = new Date(streak.endDate);
+			
+			// Check if streak overlaps with the requested month
+			return (streakStart <= monthEnd && streakEnd >= monthStart);
+		});
+		
+		return res.status(200).json({
+			year: yearNum,
+			month: monthNum,
+			dailyAdherence,
+			monthlyStreaks,
+			currentStreak: streakData.currentStreak,
+			milestones: streakData.milestones,
+			nextMilestone: streakData.nextMilestone
+		});
+	} catch (error) {
+		return next(error);
+	}
+};
+
 module.exports = {
 	addMedicine,
 	getMyMedicines,
@@ -507,6 +767,9 @@ module.exports = {
 	getDueDoses,
 	getAdherenceSummary,
 	getWeeklyAdherenceTrend,
+	getMonthlyAdherence,
+	getStreakData,
+	getMonthlyStreakHistory,
 	deleteMedicine,
 	updateMedicine,
 };

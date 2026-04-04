@@ -90,6 +90,7 @@ export interface Medicine {
   tabletsPerDose?: number;
   instructions?: string;
   isActive: boolean;
+  courseColor?: string; // Added for course range bands
   createdAt: string;
 }
 
@@ -158,6 +159,75 @@ export interface AdherenceSummary {
   taken: number;
   missed: number;
   adherencePercent: number;
+}
+
+export interface MonthlyAdherenceData {
+  year: number;
+  month: number;
+  totalScheduled: number;
+  takenDoses: number;
+  missedDoses: number;
+  adherencePercent: number;
+  isFutureMonth: boolean;
+  weeklyBreakdown: Array<{
+    weekStart: string;
+    weekEnd: string;
+    totalDoses: number;
+    takenDoses: number;
+    adherencePercent: number;
+  }>;
+}
+
+export interface StreakData {
+  currentStreak: number;
+  streakHistory: StreakSegment[];
+  milestones: MilestoneAchievement[];
+  nextMilestone: {
+    days: number;
+    daysRemaining: number;
+    name: string;
+  } | null;
+  lastCalculated: string;
+}
+
+export interface StreakSegment {
+  startDate: string;
+  endDate: string;
+  length: number;
+  isActive: boolean;
+}
+
+export interface MilestoneAchievement {
+  days: number;
+  achieved: boolean;
+  name: string;
+}
+
+export interface MonthlyStreakHistory {
+  year: number;
+  month: number;
+  dailyAdherence: DailyAdherenceStatus[];
+  monthlyStreaks: StreakSegment[];
+  currentStreak: number;
+  milestones: MilestoneAchievement[];
+  nextMilestone: {
+    days: number;
+    daysRemaining: number;
+    name: string;
+  } | null;
+}
+
+export interface DailyAdherenceStatus {
+  date: string;
+  medicines: Array<{
+    medicineId: string;
+    totalScheduled: number;
+    totalTaken: number;
+    doses: Array<{ status: string; scheduledTime: string }>;
+  }>;
+  totalScheduled: number;
+  totalTaken: number;
+  isPerfectDay: boolean;
 }
 
 export interface Patient {
@@ -484,6 +554,9 @@ export const authAPI = {
     allergies?: string[];
     specialization?: string;
     hospitalAffiliation?: string;
+    caregiverName?: string;
+    caregiverEmail?: string;
+    caregiverPhone?: string;
   }): Promise<{ token: string; user: User }> => {
     const response = await apiCall(
       "/auth/register",
@@ -1249,6 +1322,36 @@ export const medicineAPI = {
         (response.data.message as string) || "Failed to deactivate medicine",
       );
     }
+  },
+
+  getMonthlyAdherence: async (year: number, month: number): Promise<MonthlyAdherenceData> => {
+    const response = await apiCall(`/medicine/adherence/monthly?year=${year}&month=${month}`);
+    if (!response.ok) {
+      throw new Error(
+        (response.data.message as string) || "Failed to get monthly adherence",
+      );
+    }
+    return response.data as unknown as MonthlyAdherenceData;
+  },
+
+  getStreakData: async (): Promise<StreakData> => {
+    const response = await apiCall("/medicine/streak-data");
+    if (!response.ok) {
+      throw new Error(
+        (response.data.message as string) || "Failed to get streak data",
+      );
+    }
+    return response.data as unknown as StreakData;
+  },
+
+  getMonthlyStreakHistory: async (year: number, month: number): Promise<MonthlyStreakHistory> => {
+    const response = await apiCall(`/medicine/streak-history?year=${year}&month=${month}`);
+    if (!response.ok) {
+      throw new Error(
+        (response.data.message as string) || "Failed to get monthly streak history",
+      );
+    }
+    return response.data as unknown as MonthlyStreakHistory;
   },
 };
 
