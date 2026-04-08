@@ -2,13 +2,14 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User.js");
 
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "30d";
 const QR_EMERGENCY_TOKEN_EXPIRY = process.env.QR_EMERGENCY_TOKEN_EXPIRY || "30d";
 
 const signToken = (user) => {
 	return jwt.sign(
 		{ id: user._id.toString(), role: user.role, email: user.email },
 		process.env.JWT_SECRET,
-		{ expiresIn: "7d" }
+		{ expiresIn: JWT_EXPIRES_IN }
 	);
 };
 

@@ -5,6 +5,8 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import Colors from '../../constants/colors';
+import { useTheme } from '../../context/ThemeContext';
+import { authAPI, clearToken, getUserData } from '../../services/api';
 
 const { width, height } = Dimensions.get('window');
 
@@ -33,8 +35,9 @@ function Orb({ style }: { style: ViewStyle }) {
 
 export default function SplashScreen() {
   const router = useRouter();
+  const { setUser } = useTheme();
   const [qIdx, setQIdx] = useState(0);
-  const [phase, setPhase] = useState(0);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
 
   const logoAnim  = useRef(new Animated.Value(0)).current;
   const ctaAnim   = useRef(new Animated.Value(0)).current;
@@ -50,8 +53,41 @@ export default function SplashScreen() {
       Animated.timing(ctaAnim,   { toValue: 1, duration: 500, useNativeDriver: true }),
       Animated.timing(pillsAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
     ]).start();
-    setPhase(1);
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const bootstrapSession = async () => {
+      try {
+        const storedUser = await getUserData();
+        if (!storedUser) {
+          return;
+        }
+
+        const freshUser = await authAPI.me();
+        if (!isMounted) {
+          return;
+        }
+
+        const fullName = freshUser.name || `${freshUser.firstName || ''} ${freshUser.lastName || ''}`.trim();
+        setUser(freshUser.role, fullName, freshUser);
+        router.replace(freshUser.role === 'doctor' ? '/screens/DoctorDashboard' : '/screens/PatientDashboard');
+      } catch {
+        await clearToken();
+      } finally {
+        if (isMounted) {
+          setIsCheckingSession(false);
+        }
+      }
+    };
+
+    bootstrapSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [router, setUser]);
 
   // Rotate quotes
   useEffect(() => {
@@ -156,23 +192,25 @@ export default function SplashScreen() {
       </View>
 
       {/* CTA */}
-      <Animated.View style={{
-        opacity: ctaAnim,
-        marginTop: 36,
-        alignItems: 'center',
-        transform: [{ translateY: ctaAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }]
-      }}>
-        <TouchableOpacity
-          onPress={() => router.replace('/screens/LoginScreen')}
-          style={styles.enterBtn}
-          activeOpacity={0.75}
-        >
-          {/* Button glow */}
-          <View style={styles.enterBtnGlow} />
-          <Text style={styles.enterArrow}>→</Text>
-        </TouchableOpacity>
-        <Text style={styles.enterLabel}>Tap to Enter</Text>
-      </Animated.View>
+      {!isCheckingSession && (
+        <Animated.View style={{
+          opacity: ctaAnim,
+          marginTop: 36,
+          alignItems: 'center',
+          transform: [{ translateY: ctaAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }]
+        }}>
+          <TouchableOpacity
+            onPress={() => router.replace('/screens/LoginScreen')}
+            style={styles.enterBtn}
+            activeOpacity={0.75}
+          >
+            {/* Button glow */}
+            <View style={styles.enterBtnGlow} />
+            <Text style={styles.enterArrow}>→</Text>
+          </TouchableOpacity>
+          <Text style={styles.enterLabel}>Tap to Enter</Text>
+        </Animated.View>
+      )}
     </View>
   );
 }
