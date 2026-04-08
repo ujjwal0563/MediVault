@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, TouchableOpacity, Alert,
+  Pressable, GestureResponderEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Voice from '@react-native-voice/voice';
 import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
 import BottomNavLayout from '@/components/BottomNavLayout';
@@ -26,6 +28,44 @@ export default function AIAnalyzerScreen() {
   const [reports, setReports] = useState<any[]>([]);
   const [selectedReport, setSelectedReport] = useState<any>(null);
   const [analyzingReport, setAnalyzingReport] = useState(false);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [cancelOnRelease, setCancelOnRelease] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState<boolean | null>(null);
+  const [voiceHint, setVoiceHint] = useState<string>('Hold to record');
+
+  React.useEffect(() => {
+    Voice.isAvailable()
+      .then((available) => setVoiceSupported(!!available))
+      .catch(() => setVoiceSupported(false));
+
+    Voice.onSpeechStart = () => {
+      setVoiceHint('Listening... release to send');
+    };
+
+    Voice.onSpeechPartialResults = (event: any) => {
+      const spoken = event?.value?.[0] || '';
+      if (spoken) {
+        setInput(spoken);
+      }
+    };
+
+    Voice.onSpeechResults = (event: any) => {
+      const spoken = event?.value?.[0] || '';
+      if (spoken) {
+        setInput(spoken);
+      }
+    };
+
+    Voice.onSpeechError = () => {
+      setIsRecordingVoice(false);
+      setCancelOnRelease(false);
+      setVoiceHint('Could not understand. Try again.');
+    };
+
+    return () => {
+      Voice.destroy().finally(() => Voice.removeAllListeners());
+    };
+  }, []);
 
   async function runAI() {
     if (!input.trim()) return;
@@ -42,6 +82,60 @@ export default function AIAnalyzerScreen() {
       setError(err.message || 'Failed to get AI response');
     }
     setLoading(false);
+  }
+
+  async function startVoiceCapture() {
+    if (voiceSupported === false || loading || activeTab === 2) {
+      return;
+    }
+
+    try {
+      setCancelOnRelease(false);
+      setVoiceHint('Listening... release to send');
+      await Voice.start('en-US');
+      setIsRecordingVoice(true);
+    } catch {
+      setVoiceHint('Voice start failed. Tap again.');
+    }
+  }
+
+  async function finishVoiceCapture() {
+    if (!isRecordingVoice) {
+      return;
+    }
+
+    try {
+      if (cancelOnRelease) {
+        await Voice.cancel();
+        setVoiceHint('Recording canceled');
+        return;
+      }
+
+      await Voice.stop();
+      setVoiceHint('Processing voice...');
+
+      setTimeout(() => {
+        if (input.trim()) {
+          runAI();
+        } else {
+          setVoiceHint('No speech detected. Hold and try again.');
+        }
+      }, 200);
+    } catch {
+      setVoiceHint('Could not process voice. Try again.');
+    } finally {
+      setIsRecordingVoice(false);
+      setCancelOnRelease(false);
+    }
+  }
+
+  function handleVoiceMove(event: GestureResponderEvent) {
+    if (!isRecordingVoice) {
+      return;
+    }
+
+    // WhatsApp-style gesture: slide finger upward while holding to cancel.
+    setCancelOnRelease(event.nativeEvent.locationY < -20);
   }
 
   async function loadReports() {
@@ -179,6 +273,28 @@ export default function AIAnalyzerScreen() {
                     disabled={!input.trim()}
                     style={{ flex: 1 }}
                   />
+                  <Pressable
+                    onPressIn={startVoiceCapture}
+                    onPressOut={finishVoiceCapture}
+                    onTouchMove={handleVoiceMove}
+                    disabled={voiceSupported === false || loading}
+                    style={[
+                      styles.voiceBtn,
+                      {
+                        backgroundColor: isRecordingVoice
+                          ? (cancelOnRelease ? colors.danger : colors.primary)
+                          : colors.primarySoft,
+                        borderColor: isRecordingVoice ? 'transparent' : colors.primary,
+                        opacity: voiceSupported === false ? 0.5 : 1,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={isRecordingVoice ? (cancelOnRelease ? 'close-outline' : 'radio-button-on-outline') : 'mic-outline'}
+                      size={22}
+                      color={isRecordingVoice ? '#fff' : colors.primary}
+                    />
+                  </Pressable>
                   {(result || error) && (
                     <Button
                       label="Clear"
@@ -188,6 +304,11 @@ export default function AIAnalyzerScreen() {
                     />
                   )}
                 </View>
+                <Text style={[styles.voiceHint, { color: isRecordingVoice ? colors.primary : colors.textFaint }]}>
+                  {voiceSupported === false
+                    ? 'Voice unavailable on this device'
+                    : (cancelOnRelease ? 'Release now to cancel' : voiceHint)}
+                </Text>
               </Card>
 
               {loading && (
@@ -404,6 +525,21 @@ const styles = StyleSheet.create({
   btnRow: {
     flexDirection: 'row',
     marginTop: 12,
+    alignItems: 'center',
+  },
+  voiceBtn: {
+    width: 48,
+    height: 44,
+    borderRadius: 12,
+    marginLeft: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  voiceHint: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: '500',
   },
   resultHeader: {
     flexDirection: 'row',

@@ -10,7 +10,11 @@
     "newArchEnabled": true,
     "sdkVersion": "54.0.0",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "MediVault uses the microphone so you can speak symptoms for AI analysis.",
+        "NSSpeechRecognitionUsageDescription": "MediVault uses speech recognition to convert your voice into text for AI analysis."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -22,6 +26,9 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "usesCleartextTraffic": true,
+      "permissions": [
+        "RECORD_AUDIO"
+      ],
       "package": "com.anonymous.mediVaultApp"
     },
     "web": {
@@ -53,7 +60,8 @@
       ],
       "expo-font",
       "expo-asset",
-      "expo-web-browser"
+      "expo-web-browser",
+      "@react-native-voice/voice"
     ],
     "experiments": {
       "typedRoutes": true,
