@@ -1556,6 +1556,27 @@ export const aiAPI = {
     return response.data as { symptoms: string; triage: string; is_mock: boolean; disclaimer: string };
   },
 
+  voiceQuery: async (
+    transcript: string,
+    mode: "medicine" | "triage",
+  ): Promise<
+    | { medicine: string; explanation: string; is_mock: boolean; input_source?: string }
+    | { symptoms: string; triage: string; is_mock: boolean; disclaimer: string; input_source?: string }
+  > => {
+    const response = await apiCall("/ai/voice-query", {
+      method: "POST",
+      body: JSON.stringify({ transcript, mode }),
+    });
+    if (!response.ok) {
+      throw new Error(
+        (response.data.message as string) || "Failed to process voice query",
+      );
+    }
+    return response.data as
+      | { medicine: string; explanation: string; is_mock: boolean; input_source?: string }
+      | { symptoms: string; triage: string; is_mock: boolean; disclaimer: string; input_source?: string };
+  },
+
   analyzeReport: async (reportId: string): Promise<{
     aiSummary: string;
     is_mock: boolean;

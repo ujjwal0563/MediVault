@@ -51,4 +51,47 @@ router.post("/triage", verifyToken, async (req, res) => {
     }
 });
 
+router.post("/voice-query", verifyToken, async (req, res) => {
+    try {
+        const { transcript, mode } = req.body;
+
+        if (typeof transcript !== "string" || !transcript.trim()) {
+            return res.status(400).json({ message: "transcript is required" });
+        }
+
+        if (mode !== "medicine" && mode !== "triage") {
+            return res.status(400).json({ message: "mode must be either 'medicine' or 'triage'" });
+        }
+
+        const normalizedInput = transcript.trim();
+        const result = mode === "medicine"
+            ? await analyzeMedicineSideEffects(normalizedInput)
+            : await triageSymptoms(normalizedInput);
+
+        if (!result.success) {
+            return res.status(502).json({ message: `AI failed: ${result.error}` });
+        }
+
+        if (mode === "medicine") {
+            return res.status(200).json({
+                medicine: normalizedInput,
+                explanation: result.data,
+                is_mock: !!result.mock,
+                input_source: "voice",
+            });
+        }
+
+        return res.status(200).json({
+            symptoms: normalizedInput,
+            triage: result.data,
+            is_mock: !!result.mock,
+            input_source: "voice",
+            disclaimer: "This is not a medical diagnosis. Always consult a qualified doctor.",
+        });
+    } catch (error) {
+        console.error("Error in /ai/voice-query:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+});
+
 module.exports = router;

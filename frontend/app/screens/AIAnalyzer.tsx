@@ -20,6 +20,7 @@ const TABS = [
 export default function AIAnalyzerScreen() {
   const { colors } = useTheme();
   const { t } = useLanguage();
+  const latestVoiceTextRef = React.useRef('');
   const [activeTab, setActiveTab] = useState(0);
   const [input, setInput] = useState('');
   const [result, setResult] = useState<any>(null);
@@ -45,6 +46,7 @@ export default function AIAnalyzerScreen() {
     Voice.onSpeechPartialResults = (event: any) => {
       const spoken = event?.value?.[0] || '';
       if (spoken) {
+        latestVoiceTextRef.current = spoken;
         setInput(spoken);
       }
     };
@@ -52,6 +54,7 @@ export default function AIAnalyzerScreen() {
     Voice.onSpeechResults = (event: any) => {
       const spoken = event?.value?.[0] || '';
       if (spoken) {
+        latestVoiceTextRef.current = spoken;
         setInput(spoken);
       }
     };
@@ -67,16 +70,24 @@ export default function AIAnalyzerScreen() {
     };
   }, []);
 
-  async function runAI() {
-    if (!input.trim()) return;
+  async function runAI(overrideInput?: string, fromVoice: boolean = false) {
+    const prompt = (overrideInput ?? input).trim();
+    if (!prompt) return;
+
+    if (overrideInput) {
+      setInput(prompt);
+    }
+
     setLoading(true);
     setResult(null);
     setError(null);
 
     try {
-      const res = activeTab === 0
-        ? await aiAPI.explainMedicine(input.trim())
-        : await aiAPI.triage(input.trim());
+      const res = fromVoice
+        ? await aiAPI.voiceQuery(prompt, activeTab === 0 ? 'medicine' : 'triage')
+        : (activeTab === 0
+          ? await aiAPI.explainMedicine(prompt)
+          : await aiAPI.triage(prompt));
       setResult(res);
     } catch (err: any) {
       setError(err.message || 'Failed to get AI response');
@@ -90,6 +101,7 @@ export default function AIAnalyzerScreen() {
     }
 
     try {
+      latestVoiceTextRef.current = '';
       setCancelOnRelease(false);
       setVoiceHint('Listening... release to send');
       await Voice.start('en-US');
@@ -115,8 +127,9 @@ export default function AIAnalyzerScreen() {
       setVoiceHint('Processing voice...');
 
       setTimeout(() => {
-        if (input.trim()) {
-          runAI();
+        const spoken = (latestVoiceTextRef.current || input).trim();
+        if (spoken) {
+          runAI(spoken, true);
         } else {
           setVoiceHint('No speech detected. Hold and try again.');
         }
